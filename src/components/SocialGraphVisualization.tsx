@@ -182,7 +182,7 @@ const SocialGraphVisualization: React.FC<SocialGraphVisualizationProps> = ({
             onNodeClick={onNodeClick}
             backgroundColor="rgba(0,0,0,0)" // Transparent
             minZoom={0.5}
-            maxZoom={4}
+            maxZoom={6}
             enableZoomInteraction={true}
             enablePanInteraction={true}
             // Cooldown prevents infinite simulation but usually good to have some ticks

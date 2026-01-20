@@ -6,7 +6,7 @@ import "@neynar/react/dist/style.css";
 export const metadata: Metadata = {
   title: "Songjam - The Future of Engagement",
   description:
-    "Agentic CRM and AI-powered outreach for X Spaces. Supercharge your engagement and grow your audience with the power of verifiable human connection.",
+    "Discover connections, unified identities, and grow your network with the power of verifiable social data.",
   manifest: "/manifest.json",
 };
 

@@ -9,7 +9,6 @@ import { NeynarAuthButton, useNeynarContext, SIWN_variant } from "@neynar/react"
 export default function SocialPage() {
   const searchParams = useSearchParams();
   const twitterUsername = searchParams.get("x") || undefined;
-  // @ts-ignore - verified_accounts is not in standard types yet
   const { user: neynarUser, isAuthenticated } = useNeynarContext();
 
   return (

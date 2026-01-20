@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Lock } from "lucide-react";
 
-import { collection, doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase.service";
 import { useNeynarContext } from "@neynar/react";
 import { neynarClient } from "@/services/neynar-client";
@@ -15,31 +14,19 @@ const SocialGraphVisualization = dynamic(
   { ssr: false }
 );
 
-export interface ProcessFarcasterProfile {
-  twitterId: string;
-  twitterUsername: string;
-  farcasterId: string;
-  farcasterUsername: string;
-  farcasterName: string;
-  type: "follower" | "following";
-  pfpUrl?: string;
-}
+import { 
+  ProcessFarcasterProfile, 
+  ProcessMetadata, 
+  subscribeToProcessMetadata, 
+  subscribeToProcessProfiles, 
+  updateProfileFollow
+} from "@/services/db/processFarcaster.service";
+import { INeynarAuthenticatedUser } from "@neynar/react/dist/types/common";
 
-interface ProcessMetadata {
-  status: "queued" | "processing" | "completed" | "failed";
-  createdAt?: number;
-  updatedAt?: number;
-  pfpUrl?: string;
-  farcasterUsername?: string;
-  fid?: number;
-}
 
-interface SocialGraphProps {
-  currentUser: {
-    username: string;
-    fid: number;
-    pfp_url?: string;
-    display_name?: string;
+
+export interface SocialGraphProps {
+  currentUser: INeynarAuthenticatedUser & {
     verified_accounts?: Array<{
       platform: 'x' | 'instagram' | 'tiktok' | string;
       username: string;
@@ -48,22 +35,28 @@ interface SocialGraphProps {
   twitterUsername?: string;
 }
 
-const PROCESS_FARCASTER_COLLECTION = "process_farcaster";
-
 export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) {
-  const [internalTwitterUsername, setInternalTwitterUsername] = useState<string | undefined>(twitterUsername);
+  const currentUserTwitterUsername = React.useMemo(() => 
+    currentUser?.verified_accounts?.find(acc => acc.platform === 'x')?.username, 
+    [currentUser]
+  );
+
+  const [internalTwitterUsername, setInternalTwitterUsername] = useState<string | undefined>(twitterUsername || currentUserTwitterUsername);
   const [data, setData] = useState<ProcessFarcasterProfile[]>([]);
   const [metadata, setMetadata] = useState<ProcessMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [followingState, setFollowingState] = useState<Record<string, boolean>>({}); // fid -> isFollowing/Loading
   const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({});
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Get signer for follow actions
-  // @ts-ignore - explicitly accessing signerUuid which might be hidden in types
-  const { user: neynarUser, signerUuid } = useNeynarContext();
+  const canFollow = React.useMemo(() => {
+    if (!currentUser) return false;
+    if (!twitterUsername) return true;
+    
+    const userTwitter = currentUser.verified_accounts?.find(acc => acc.platform === 'x' && acc.username === twitterUsername)?.username; 
+    return userTwitter?.toLowerCase() === twitterUsername.toLowerCase();
+  }, [internalTwitterUsername, currentUser]);
   
   // Ref for container constraints if needed
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,9 +87,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
       // Priority: 1. Metadata from generation (most recent/accurate) 2. Unavatar fallback 3. Current user PFP
       pfpUrl: metadata?.pfpUrl 
         ? metadata.pfpUrl 
-        : currentUser?.verified_accounts?.find(acc => acc.platform === 'x' && acc.username === internalTwitterUsername)?.username 
-            ? `https://unavatar.io/twitter/${internalTwitterUsername}`
-            : currentUser?.pfp_url,
+        : currentUser?.pfp_url,
       type: "root",
       x: 0,
       y: 0,
@@ -104,9 +95,9 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
              // Actually, force-graph centers automatically.
     };
     
-    // If no data yet, just return central node if we have a user
+    // If no data yet, just return empty to hide the center node as requested
     if (data.length === 0) {
-        return { nodes: [centralNode], links: [] };
+        return { nodes: [], links: [] };
     }
 
     const nodes = [
@@ -132,20 +123,18 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
     // Let's rely on internal state mostly.
     if (twitterUsername) {
         setInternalTwitterUsername(twitterUsername);
+    } else if (currentUserTwitterUsername) {
+        setInternalTwitterUsername(currentUserTwitterUsername);
     }
-  }, [twitterUsername]);
+  }, [twitterUsername, currentUserTwitterUsername]);
 
   useEffect(() => {
     if (!internalTwitterUsername) return;
 
     // Listen to metadata (parent document)
-    const docRef = doc(db, PROCESS_FARCASTER_COLLECTION, internalTwitterUsername);
-    const unsubscribeDoc = onSnapshot(docRef, (docSnap) => {
-        if (docSnap.exists()) {
-            setMetadata(docSnap.data() as ProcessMetadata);
-        } else {
-            setMetadata(null);
-        }
+    // Listen to metadata (parent document)
+    const unsubscribeDoc = subscribeToProcessMetadata(internalTwitterUsername, (data) => {
+        setMetadata(data);
     });
 
     return () => unsubscribeDoc();
@@ -161,35 +150,25 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
     setError(null);
 
     // Points to the subcollection "profiles" inside the document "twitterUsername" inside collection "process_farcaster"
-    // Path: process_farcaster/{twitterUsername}/profiles
-    const collectionRef = collection(db, PROCESS_FARCASTER_COLLECTION, internalTwitterUsername, "profiles");
-    
-    // Listen to realtime updates on the subcollection
-    const unsubscribe = onSnapshot(collectionRef, (querySnapshot) => {
-        setLoading(false);
-        const profiles: ProcessFarcasterProfile[] = [];
-        setTotalCount(querySnapshot.size);
-        
-        querySnapshot.forEach((doc) => {
-            // Data validation could go here, but casting for now as per reliable source assumption
-            profiles.push(doc.data() as ProcessFarcasterProfile);
-        });
-
-        if (profiles.length > 0) {
-             // Sort/shuffle
-            //  const shuffled = profiles.sort(() => 0.5 - Math.random());
-            //  setData(shuffled.slice(0, 50));
-             setData(profiles);
-        } else {
-             // Empty subcollection
-             setData([]); 
+    // Listen to profiles subcollection
+    const unsubscribe = subscribeToProcessProfiles(
+        internalTwitterUsername,
+        (profiles, count) => {
+            setLoading(false);
+            setTotalCount(count);
+            
+            if (profiles.length > 0) {
+                 setData(profiles);
+            } else {
+                 setData([]); 
+            }
+        },
+        (err) => {
+            console.error("Social graph listener error:", err);
+            setError("Could not load social graph.");
+            setLoading(false);
         }
-    }, (err) => {
-        console.error("Social graph listener error:", err);
-        setError("Could not load social graph.");
-        setLoading(false);
-    });
-
+    );
 
     return () => unsubscribe();
   }, [internalTwitterUsername]);
@@ -205,18 +184,8 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
      return () => window.removeEventListener('resize', checkMobile);
    }, []);
 
-  // Helper to generate random positions around a circle
-  const getPosition = (index: number, total: number, radius: number) => {
-    const angle = (index / total) * 2 * Math.PI;
-    // Add some randomness to radius and angle for organic look
-    const r = radius + (Math.random() * 40 - 20); 
-    const x = Math.cos(angle) * r;
-    const y = Math.sin(angle) * r;
-    return { x, y };
-  };
-
-  const handleFollow = async (fid: string) => {
-      if (!signerUuid) {
+  const handleFollow = async (fid: string, viewerContext: ProcessFarcasterProfile['viewerContext']) => {
+      if (!currentUser?.signer_uuid || !currentUserTwitterUsername) {
           alert("Please sign in with Farcaster to follow users.");
           return;
       }
@@ -224,8 +193,9 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
       setFollowLoading(prev => ({ ...prev, [fid]: true }));
 
       try {
-           await neynarClient.publishFollow(signerUuid, parseInt(fid));
-           setFollowingState(prev => ({ ...prev, [fid]: true }));
+           await neynarClient.publishFollow(currentUser.signer_uuid, parseInt(fid));
+           // No need to set local state, backend update will reflect in viewerContext
+           await updateProfileFollow(currentUserTwitterUsername, fid, viewerContext);
       } catch (err) {
           console.error("Follow failed", err);
           alert("Failed to follow user.");
@@ -236,7 +206,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
 
   const handleGenerateGraph = async (twitterUsername: string) => {
       if (!twitterUsername) return;
-      if (!neynarUser) {
+      if (!currentUser) {
           alert("Please sign in with Farcaster to generate your social graph.");
           return;
       }
@@ -246,9 +216,9 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
           // Trigger the generation process
           await axios.post(`${process.env.NEXT_PUBLIC_SONGJAM_SERVER}/social-graph/process-farcaster`, {
               twitterUsername,
-              fid: neynarUser.fid,
-              pfpUrl: neynarUser.pfp_url || '',
-              farcasterUsername: neynarUser.username
+              fid: currentUser.fid,
+              pfpUrl: currentUser.pfp_url || '',
+              farcasterUsername: currentUser.username
           });
           
           // Once the request is successful, we set the internal state which triggers the firebase listeners
@@ -296,6 +266,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
                               Updated: {formatDate(metadata.updatedAt)}
                           </div>
                       )}
+                      {/* Message moved to center of graph */}
                  </div>
              )}
           </div>
@@ -305,9 +276,28 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
               <div className="absolute inset-0 bg-gradient-to-b from-purple-900/10 to-transparent pointer-events-none" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-900/20 via-transparent to-transparent opacity-50" />
 
-              {loading && !data.length && (
+              {/* Center Status Message */}
+              {metadata && metadata.status !== 'completed' && metadata.message && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                      <div className="bg-slate-900/80 backdrop-blur-md border border-slate-700/50 px-6 py-4 rounded-2xl shadow-2xl flex flex-col items-center gap-3 max-w-md text-center mx-4 animate-in fade-in zoom-in duration-300">
+                          {metadata.status === 'processing' && (
+                              <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-2" />
+                          )}
+                          <span className="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-400">
+                              {metadata.message}
+                          </span>
+                          {metadata.status === 'processing' && (
+                              <span className="text-xs text-slate-400 font-mono">
+                                  Processing social graph...
+                              </span>
+                          )}
+                      </div>
+                  </div>
+              )}
+
+              {loading && !metadata && (
                 <div className="absolute text-cyan-400 animate-pulse font-mono text-sm z-30">
-                   {metadata?.status === 'processing' ? 'Indexing social graph...' : 'Scanning social network...'}
+                   Scanning social network...
                 </div>
               )}
 
@@ -392,13 +382,17 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
               <h3 className="text-white font-semibold flex items-center gap-2 text-sm uppercase tracking-wide">
                   <span className="text-yellow-400">⚡</span> Quick Follow
               </h3>
-              {data.length > 0 && <button
-                  disabled
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 text-xs font-medium border border-slate-700/50 cursor-not-allowed opacity-75"
+              {/* {data.length > 0 && <button
+                  disabled={!canFollow}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    !canFollow
+                        ? 'bg-slate-800/50 text-slate-400 border-slate-700/50 cursor-not-allowed opacity-75'
+                        : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                  }`}
                >
-                  <Lock className="w-3 h-3" />
+                  {!canFollow && <Lock className="w-3 h-3" />}
                   <span>Follow All</span>
-              </button>}
+              </button>} */}
           </div>
           
           <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
@@ -433,11 +427,26 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
                       </div>
                       
                       <button
-                          disabled
-                          className="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all min-w-[70px] flex items-center justify-center gap-1 bg-slate-800/50 text-slate-400 border border-slate-700/50 cursor-not-allowed"
+                          onClick={() => handleFollow(user.farcasterId, user.viewerContext)}
+                          disabled={!canFollow || followLoading[user.farcasterId] || user.viewerContext?.following}
+                          className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all min-w-[70px] flex items-center justify-center gap-1 border border-slate-700/50 ${
+                              !canFollow || followLoading[user.farcasterId] || user.viewerContext?.following
+                                  ? 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
+                                  : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
+                          }`}
                       >
-                          <Lock className="w-3 h-3" />
-                          <span>Follow</span>
+                          {followLoading[user.farcasterId] ? (
+                              <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (user.viewerContext?.following) ? (
+                               <span>Following</span>
+                          ) : !canFollow ? (
+                              <>
+                                <Lock className="w-3 h-3" />
+                                <span>Follow</span>
+                              </>
+                          ) : (
+                              <span>Follow</span>
+                          )}
                       </button>
                   </div>
               ))}
