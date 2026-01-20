@@ -35,13 +35,11 @@ export interface SocialGraphProps {
   twitterUsername?: string;
 }
 
-export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) {
+export function SocialGraph({ currentUser }: SocialGraphProps) {
   const currentUserTwitterUsername = React.useMemo(() => 
     currentUser?.verified_accounts?.find(acc => acc.platform === 'x')?.username, 
     [currentUser]
   );
-
-  const [internalTwitterUsername, setInternalTwitterUsername] = useState<string | undefined>(twitterUsername || currentUserTwitterUsername);
   const [data, setData] = useState<ProcessFarcasterProfile[]>([]);
   const [metadata, setMetadata] = useState<ProcessMetadata | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,13 +48,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
   const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({});
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const canFollow = React.useMemo(() => {
-    if (!currentUser) return false;
-    if (!twitterUsername) return true;
-    
-    const userTwitter = currentUser.verified_accounts?.find(acc => acc.platform === 'x' && acc.username === twitterUsername)?.username; 
-    return userTwitter?.toLowerCase() === twitterUsername.toLowerCase();
-  }, [internalTwitterUsername, currentUser]);
+  const canFollow = true;
   
   // Ref for container constraints if needed
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,12 +70,12 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
   }, []);
 
   const graphData = React.useMemo(() => {
-    if (!internalTwitterUsername && !currentUser) return { nodes: [], links: [] };
+    if (!currentUser) return { nodes: [], links: [] };
 
     // Central node
     const centralNode = {
       id: "root",
-      farcasterUsername: internalTwitterUsername || currentUser?.username,
+      farcasterUsername: currentUser?.username,
       // Priority: 1. Metadata from generation (most recent/accurate) 2. Unavatar fallback 3. Current user PFP
       pfpUrl: metadata?.pfpUrl 
         ? metadata.pfpUrl 
@@ -114,34 +106,22 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
     }));
 
     return { nodes, links };
-  }, [data, internalTwitterUsername, currentUser]);
-
-
-  useEffect(() => {
-    // If props change, update state, but only if state wasn't successfully set by user interaction?
-    // Actually, usually props sync is good, but here we want to allow override.
-    // Let's rely on internal state mostly.
-    if (twitterUsername) {
-        setInternalTwitterUsername(twitterUsername);
-    } else if (currentUserTwitterUsername) {
-        setInternalTwitterUsername(currentUserTwitterUsername);
-    }
-  }, [twitterUsername, currentUserTwitterUsername]);
+  }, [data, currentUser]);
 
   useEffect(() => {
-    if (!internalTwitterUsername) return;
+    if (!currentUserTwitterUsername) return;
 
     // Listen to metadata (parent document)
     // Listen to metadata (parent document)
-    const unsubscribeDoc = subscribeToProcessMetadata(internalTwitterUsername, (data) => {
+    const unsubscribeDoc = subscribeToProcessMetadata(currentUserTwitterUsername, (data) => {
         setMetadata(data);
     });
 
     return () => unsubscribeDoc();
-  }, [internalTwitterUsername]);
+  }, [currentUserTwitterUsername]);
 
   useEffect(() => {
-    if (!internalTwitterUsername) {
+    if (!currentUserTwitterUsername) {
         // If no twitterUsername provided, we don't attach listener.
         return;
     }
@@ -152,7 +132,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
     // Points to the subcollection "profiles" inside the document "twitterUsername" inside collection "process_farcaster"
     // Listen to profiles subcollection
     const unsubscribe = subscribeToProcessProfiles(
-        internalTwitterUsername,
+        currentUserTwitterUsername,
         (profiles, count) => {
             setLoading(false);
             setTotalCount(count);
@@ -171,7 +151,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
     );
 
     return () => unsubscribe();
-  }, [internalTwitterUsername]);
+  }, [currentUserTwitterUsername]);
 
   // if (!currentUser) return null;
 
@@ -220,9 +200,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
               pfpUrl: currentUser.pfp_url || '',
               farcasterUsername: currentUser.username
           });
-          
-          // Once the request is successful, we set the internal state which triggers the firebase listeners
-          setInternalTwitterUsername(twitterUsername);
+
       } catch (err) {
           console.error("Failed to generate graph:", err);
           alert("Failed to start social graph generation. Please try again.");
@@ -315,7 +293,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
                             data={graphData}
                             width={dimensions.width}
                             height={dimensions.height}
-                            contextLabel={internalTwitterUsername || currentUser?.username ? `@${internalTwitterUsername || currentUser?.username}` : ''}
+                            contextLabel={currentUser?.username ? `@${currentUser?.username}` : ''}
                             onNodeClick={(node) => {
                                 if (node.id !== 'root') {
                                     window.open(`https://warpcast.com/${node.farcasterUsername}`, '_blank');
@@ -327,9 +305,7 @@ export function SocialGraph({ currentUser, twitterUsername }: SocialGraphProps) 
 
                 {!loading && data.length === 0 && !error && (
                     <div className="absolute flex flex-col items-center justify-center p-6 text-center z-20">
-                        {internalTwitterUsername ? (
-                             <div className="text-slate-500 text-sm">No social graph connections found.</div>
-                        ) : !currentUser ? (
+                        {!currentUser ? (
                              <div className="flex flex-col items-center gap-3">
                                 <div className="text-slate-500 text-sm max-w-[200px] text-center">
                                     Sign in with Farcaster to generate your social graph.

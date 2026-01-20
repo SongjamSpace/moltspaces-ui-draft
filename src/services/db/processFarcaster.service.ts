@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot, Unsubscribe, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, Unsubscribe, updateDoc, getDocs } from "firebase/firestore";
 import { db } from "@/services/firebase.service";
 
 export interface ProcessFarcasterProfile {
@@ -12,6 +12,10 @@ export interface ProcessFarcasterProfile {
   experimental: {
     neynar_user_score: number;
   }
+  verified_addresses: {
+    eth_addresses: string[];
+    sol_addresses: string[];
+  };
   viewerContext: {
     following: boolean;
     followed_by: boolean;
@@ -90,3 +94,19 @@ export const updateProfileFollow = async (twitterUsername: string, targetFid: st
     }
   })    
 }
+
+export const getAllProfilesByUsername = async (twitterUsername: string): Promise<ProcessFarcasterProfile[]> => {
+  const collectionRef = collection(
+    db,
+    PROCESS_FARCASTER_COLLECTION,
+    twitterUsername,
+    "profiles"
+  );
+
+  const querySnapshot = await getDocs(collectionRef);
+  const profiles: ProcessFarcasterProfile[] = [];
+  querySnapshot.forEach((doc) => {
+    profiles.push(doc.data() as ProcessFarcasterProfile);
+  });
+  return profiles;
+};
