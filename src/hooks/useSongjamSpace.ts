@@ -24,10 +24,9 @@ export type StartSpaceResult = {
 
 // Host info for auto-deployment
 export interface HostInfo {
-  twitterId: string;
   username: string;
   displayName?: string;
-  fid?: string;
+  fid: string;
   creatorAddress?: string;
   ownerAddress?: string;
   signature?: string;
@@ -45,7 +44,7 @@ const DEFAULT_TOKEN_PARAMS = {
 };
 
 export async function autoDeployToken(hostInfo: HostInfo): Promise<{ success: boolean; hostSlug: string }> {
-  const { twitterId, username, displayName, fid, signature, message } = hostInfo;
+  const { username, displayName, fid, signature, message } = hostInfo;
   const hostSlug = username;
   
   // Create default token params with host-specific values
@@ -68,22 +67,22 @@ export async function autoDeployToken(hostInfo: HostInfo): Promise<{ success: bo
 
   try {
     // Step 1: Create the empire builder record
-    await createEmpireBuilder(twitterId, {
+    await createEmpireBuilder(fid, {
       name: tokenName,
       symbol: tokenSymbol,
       imageUrl: imageUrl,
       hostSlug: hostSlug,
-      fid: fid || '',
+      fid: fid,
       airdropEntries
     });
 
     // Step 2: Update status to deploying
-    await updateDeploymentStatus(twitterId, 'deploying');
+    await updateDeploymentStatus(fid, 'deploying');
 
     // Require addresses - return failure if not provided
     if (!hostInfo.creatorAddress || !hostInfo.ownerAddress) {
       console.error('creatorAddress and ownerAddress are required');
-      await updateDeploymentStatus(twitterId, 'failed').catch(() => {});
+      await updateDeploymentStatus(fid, 'failed').catch(() => {});
       return { success: false, hostSlug };
     }
 
@@ -156,7 +155,7 @@ export async function autoDeployToken(hostInfo: HostInfo): Promise<{ success: bo
 
     // Step 5: Update Firebase with deployment info
     await updateEmpireBuilderDeployment(
-      twitterId,
+      fid,
       tokenAddress,
       simulatedEmpireAddress,
       txHash
@@ -167,7 +166,7 @@ export async function autoDeployToken(hostInfo: HostInfo): Promise<{ success: bo
 
   } catch (error) {
     console.error('Auto-deployment failed:', error);
-    await updateDeploymentStatus(twitterId, 'failed').catch(() => {});
+    await updateDeploymentStatus(fid, 'failed').catch(() => {});
     return { success: false, hostSlug };
   }
 }

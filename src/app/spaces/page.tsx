@@ -138,10 +138,9 @@ export default function SpacesPage() {
       }
 
       const result = await autoDeployToken({
-        twitterId: hostFid,
         username: neynarUser?.username || `host_${hostFid.slice(0, 8)}`,
         displayName: neynarUser?.display_name || undefined,
-        fid: neynarUser?.fid?.toString(),
+        fid: hostFid,
         creatorAddress: walletAddress,
         ownerAddress: walletAddress,
         signature: signResult.signature,

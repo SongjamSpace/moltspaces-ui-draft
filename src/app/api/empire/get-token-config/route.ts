@@ -76,7 +76,9 @@ export async function POST(request: NextRequest) {
                 // Optional: Airdrop
                 ...(body.airdropEntries && body.airdropEntries.length > 0 && {
                     enableAirdrop: true,
-                    airdropEntries: body.airdropEntries
+                    airdropEntries: body.airdropEntries,
+                    airdropLockupDays: 1,
+                    airdropVestingDays: 1
                 })
             })
         });
