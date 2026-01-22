@@ -286,6 +286,7 @@ export default function SpacesPage() {
                     />
                     <button
                       onClick={() => {
+                        if (!neynarUser) return alert('Please sign in with Farcaster');
                         setShowAirdropPopup(true);
                       }}
                       disabled={isDeploying || isSigning || !tokenSymbol}
@@ -464,7 +465,6 @@ export default function SpacesPage() {
         </div>
 
         {/* Your Social Graph Section */}
-        {isAuthenticated && neynarUser && (
           <div className="mb-12">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-lg">🕸️</span>
@@ -475,7 +475,6 @@ export default function SpacesPage() {
             </p>
             <SocialGraph currentUser={neynarUser} />
           </div>
-        )}
       </main>
     </div>
   );
