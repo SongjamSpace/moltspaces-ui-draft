@@ -68,7 +68,7 @@ export async function autoDeployToken(hostInfo: HostInfo, provider?: any): Promi
   let imageUrl = '';
   try {
     const qrData = `https://my.songjam.space/${username}`;
-    const logoUrl = '/logo-bg-512.png';
+    const logoUrl = '/black_logo.png';
     const qrBlob = await generateQRWithLogo(qrData, logoUrl);
     imageUrl = await uploadQRToFirebase(qrBlob, `spaces-qr/${username}`);
   } catch (error) {

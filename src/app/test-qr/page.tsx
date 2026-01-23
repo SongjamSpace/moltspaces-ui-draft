@@ -14,7 +14,7 @@ export default function TestQRPage() {
     try {
       setLoading(true);
       const data = `https://my.songjam.space/${username}`;
-      const logoUrl = '/logo-bg-512.png';
+      const logoUrl = '/black_logo.png';
       
       const blob = await generateQRWithLogo(data, logoUrl, { width, height });
       const objectUrl = URL.createObjectURL(blob);
