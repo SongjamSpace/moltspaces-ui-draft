@@ -9,6 +9,7 @@ import {
     onSnapshot,
     query,
     where,
+    orderBy,
     Unsubscribe,
 } from 'firebase/firestore';
 
@@ -21,6 +22,7 @@ export interface LiveSpaceDoc {
     dailyRoomUrl?: string;      // Current room URL when live
     participantCount: number;
     lastUpdated: number;
+    title?: string;
 }
 
 // Session record in the subcollection (historical data)
@@ -30,16 +32,34 @@ export interface SpaceSession {
     startedAt: number;
     endedAt?: number;
     peakParticipants: number;
+    title?: string;
+}
+
+// Participant record in the space_participants collection
+export interface SpaceParticipant {
+    id?: string;
+    sessionId: string;        // Reference to the session in live_spaces/{hostSlug}/sessions
+    hostSlug: string;         // For querying all participants of a host's space
+    userFid: string;
+    farcasterUsername: string;
+    displayName: string;
+    pfpUrl: string;
+    role: 'host' | 'speaker' | 'listener';
+    joinedAt: number;
+    leftAt?: number | null;
+    status: 'active' | 'left';
 }
 
 export interface CreateLiveSpaceData {
     hostSlug: string;
     hostFid: string;
     dailyRoomUrl: string;
+    title?: string;
 }
 
 const LIVE_SPACES_COLLECTION = 'live_spaces';
 const SESSIONS_SUBCOLLECTION = 'sessions';
+const PARTICIPANTS_COLLECTION = 'space_participants';
 
 /**
  * Go live - updates the host's document and creates a new session
@@ -50,11 +70,16 @@ export async function goLive(data: CreateLiveSpaceData): Promise<LiveSpaceDoc> {
         const docRef = doc(db, LIVE_SPACES_COLLECTION, data.hostSlug);
         
         // Create a new session in the subcollection
-        const sessionDoc = {
+        const sessionDoc: Record<string, unknown> = {
             dailyRoomUrl: data.dailyRoomUrl,
             startedAt: Date.now(),
             peakParticipants: 1,
         };
+        
+        // Only include title if it's defined (Firebase doesn't allow undefined)
+        if (data.title) {
+            sessionDoc.title = data.title;
+        }
         
         const sessionRef = await addDoc(
             collection(db, LIVE_SPACES_COLLECTION, data.hostSlug, SESSIONS_SUBCOLLECTION),
@@ -71,6 +96,11 @@ export async function goLive(data: CreateLiveSpaceData): Promise<LiveSpaceDoc> {
             participantCount: 1,
             lastUpdated: Date.now(),
         };
+        
+        // Only include title if it's defined
+        if (data.title) {
+            liveSpaceDoc.title = data.title;
+        }
 
         await setDoc(docRef, liveSpaceDoc);
 
@@ -225,6 +255,88 @@ export function subscribeToAllLiveSpaces(
         },
         (error) => {
             console.error('Error in all live spaces subscription:', error);
+            callback([]);
+        }
+    );
+}
+
+// ============ Participant Management Functions ============
+
+/**
+ * Add a participant to a space session
+ */
+export async function addParticipant(data: {
+    sessionId: string;
+    hostSlug: string;
+    userFid: string;
+    farcasterUsername: string;
+    displayName: string;
+    pfpUrl: string;
+    role: 'host' | 'speaker' | 'listener';
+}): Promise<string> {
+    try {
+        const participantData: Omit<SpaceParticipant, 'id'> = {
+            ...data,
+            joinedAt: Date.now(),
+            leftAt: null,
+            status: 'active'
+        };
+
+        const docRef = await addDoc(collection(db, PARTICIPANTS_COLLECTION), participantData);
+        return docRef.id;
+    } catch (error) {
+        console.error('Error adding participant:', error);
+        throw error;
+    }
+}
+
+/**
+ * Remove a participant from a space (mark as left)
+ */
+export async function removeParticipant(participantId: string): Promise<void> {
+    try {
+        const docRef = doc(db, PARTICIPANTS_COLLECTION, participantId);
+        await updateDoc(docRef, {
+            leftAt: Date.now(),
+            status: 'left'
+        });
+    } catch (error) {
+        console.error('Error removing participant:', error);
+        // Don't throw, just log. Non-critical for UX.
+    }
+}
+
+/**
+ * Subscribe to all active participants in a specific session
+ */
+export function subscribeToSessionParticipants(
+    sessionId: string | undefined,
+    callback: (participants: SpaceParticipant[]) => void
+): Unsubscribe {
+    // If no sessionId, return empty and provide a no-op unsubscribe
+    if (!sessionId) {
+        callback([]);
+        return () => {};
+    }
+
+    const participantsQuery = query(
+        collection(db, PARTICIPANTS_COLLECTION),
+        where('sessionId', '==', sessionId),
+        where('status', '==', 'active'),
+        orderBy('joinedAt', 'asc')
+    );
+
+    return onSnapshot(
+        participantsQuery,
+        (snapshot) => {
+            const participants: SpaceParticipant[] = [];
+            snapshot.forEach((docSnap) => {
+                participants.push({ id: docSnap.id, ...docSnap.data() } as SpaceParticipant);
+            });
+            callback(participants);
+        },
+        (error) => {
+            console.error('Error in participants subscription:', error);
             callback([]);
         }
     );

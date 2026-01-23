@@ -6,14 +6,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DailyProvider, useDaily, useParticipantIds, useLocalParticipant, DailyAudio } from '@daily-co/daily-react';
 import { useConversation } from '@elevenlabs/react';
 import VoiceOrb from '@/components/songjam/VoiceOrb';
+import SpaceGraph from '@/components/songjam/SpaceGraph';
 import { getEmpireBuilderByHostSlug, EmpireBuilder } from '@/services/db/empireBuilder.db';
+import SpaceChat from '@/components/songjam/SpaceChat';
 import { 
     goLive, 
     endSpace,
     subscribeToLiveSpace,
-    LiveSpaceDoc 
+    LiveSpaceDoc,
+    addParticipant,
+    removeParticipant,
+    subscribeToSessionParticipants,
+    SpaceParticipant
 } from '@/services/db/liveSpaces.db';
 import { NeynarAuthButton, useNeynarContext, SIWN_variant } from '@neynar/react';
+import { neynarClient } from "@/services/neynar-client";
 import { Mic, MicOff, Users, LogOut, Radio, Crown, Loader2, Send, Wifi } from 'lucide-react';
 
 // Loading component
@@ -201,21 +208,29 @@ const ParticipantBubble = ({
     );
 };
 
+interface HostProfile {
+    username: string;
+    displayName: string;
+    pfpUrl?: string;
+}
+
 // Main room content component
 const RoomContent = ({ 
-    hostData,
+    hostProfile,
     liveSpace,
     isHost,
     onLeave,
     onEndSpace,
-    currentUserInfo
+    currentUserInfo,
+    activeSessions
 }: { 
-    hostData: EmpireBuilder;
+    hostProfile: HostProfile;
     liveSpace: LiveSpaceDoc;
     isHost: boolean;
     onLeave: () => void;
     onEndSpace: () => void;
     currentUserInfo?: ParticipantInfo;
+    activeSessions: SpaceParticipant[];
 }) => {
     const daily = useDaily();
     const localParticipant = useLocalParticipant();
@@ -245,18 +260,23 @@ const RoomContent = ({
                 className="flex justify-between items-center p-6 border-b border-slate-800"
             >
                 <div className="flex items-center gap-4">
-                    {hostData.imageUrl && (
-                        <img 
-                            src={hostData.imageUrl} 
-                            alt={hostData.name}
+                    {hostProfile.pfpUrl ? (
+                         <img 
+                            src={hostProfile.pfpUrl} 
+                            alt={hostProfile.displayName}
                             className="w-12 h-12 rounded-full border-2 border-purple-500"
                         />
+                    ) : (
+                        <div className="w-12 h-12 rounded-full border-2 border-purple-500 bg-slate-800 flex items-center justify-center">
+                             <span className="text-xl font-bold">{hostProfile.displayName.charAt(0)}</span>
+                        </div>
                     )}
+                   
                     <div>
                         <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                            {hostData.name}&apos;s Space
+                            {liveSpace.title || `${hostProfile.displayName}'s Space`}
                         </h1>
-                        <p className="text-slate-400 text-sm">@{hostData.hostSlug} • ${hostData.symbol}</p>
+                        <p className="text-slate-400 text-sm">@{hostProfile.username}</p>
                     </div>
                 </div>
                 
@@ -298,58 +318,35 @@ const RoomContent = ({
             </motion.div>
 
             {/* Main content - Participants */}
-            <div className="flex-1 p-6 overflow-hidden">
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="h-full bg-slate-900/50 rounded-2xl border border-slate-800 p-6 flex flex-wrap gap-6 content-start"
-                >
-                    {participantIds.map((id, index) => {
-                        const isLocalParticipant = localParticipant?.session_id === id;
-                        return (
-                            <ParticipantBubble 
-                                key={id} 
-                                id={id} 
-                                isHost={index === 0}
-                                isLocal={isLocalParticipant}
-                                userInfo={isLocalParticipant ? currentUserInfo : undefined}
-                            />
-                        );
-                    })}
-                    
-                    {participantIds.length === 0 && (
-                        <div className="w-full h-full flex items-center justify-center text-slate-500">
-                            <div className="text-center">
-                                <Radio className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                <p>Waiting for participants...</p>
-                            </div>
-                        </div>
-                    )}
-                </motion.div>
+            <div className="flex-1 overflow-hidden relative flex flex-row">
+                <div className="flex-1 relative">
+                    {/* Background effects */}
+                    <div className="absolute inset-0 z-0">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-purple-900/10 rounded-full blur-[100px]" />
+                    </div>
+
+                    <div className="relative z-10 w-full h-full">
+                         {/* Space Graph Visualization */}
+                         <SpaceGraph 
+                            hostProfile={hostProfile}
+                            activeSessions={activeSessions}
+                         />
+                    </div>
+                </div>
+
+                {/* Right Side Chat Panel */}
+                <div className="hidden md:block h-full relative z-20">
+                    <SpaceChat 
+                        currentUser={{
+                            username: currentUserInfo?.username || 'Guest',
+                            displayName: currentUserInfo?.displayName,
+                            pfpUrl: currentUserInfo?.pfpUrl
+                        }}
+                    />
+                </div>
             </div>
 
-            {/* Token info footer */}
-            {hostData.tokenAddress && (
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-4 border-t border-slate-800 bg-slate-900/50"
-                >
-                    <div className="flex items-center justify-center gap-4 text-sm text-slate-400">
-                        <span>Token: {hostData.tokenAddress.slice(0, 6)}...{hostData.tokenAddress.slice(-4)}</span>
-                        <span>•</span>
-                        <a 
-                            href={`https://basescan.org/token/${hostData.tokenAddress}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-400 hover:text-purple-300 transition-colors"
-                        >
-                            View on Basescan
-                        </a>
-                    </div>
-                </motion.div>
-            )}
+
         </div>
     );
 };
@@ -394,7 +391,7 @@ const PreJoinLobby = ({
                     )}
                     
                     <h1 className="text-3xl font-bold text-white mb-2">
-                        {hostData.name}&apos;s Space
+                        {liveSpace.title || `${hostData.name}'s Space`}
                     </h1>
                     <p className="text-slate-400 mb-6">
                         @{hostData.hostSlug} • ${hostData.symbol}
@@ -666,6 +663,9 @@ const HostSpaceContent = () => {
     const [isGoingLive, setIsGoingLive] = useState(false);
     const [requestSent, setRequestSent] = useState(false);
 
+    const [activeSessions, setActiveSessions] = useState<SpaceParticipant[]>([]);
+    const sessionIdRef = useRef<string | null>(null);
+
     // Voice agent state
     const [agentState, setAgentState] = useState<AgentState>('disconnected');
     const [orbState, setOrbState] = useState<'idle' | 'listening' | 'speaking' | 'transitioning'>('idle');
@@ -738,6 +738,29 @@ const HostSpaceContent = () => {
         return () => unsubscribe();
     }, [farcasterUsername, roomState, daily]);
 
+    // Subscribe to active participants for the graph
+    useEffect(() => {
+        if (!liveSpace?.currentSessionId) {
+            setActiveSessions([]);
+            return;
+        }
+
+        const unsubscribe = subscribeToSessionParticipants(liveSpace.currentSessionId, (participants) => {
+            setActiveSessions(participants);
+        });
+
+        return () => unsubscribe();
+    }, [liveSpace?.currentSessionId]);
+
+    // Handle session cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (sessionIdRef.current) {
+                removeParticipant(sessionIdRef.current);
+            }
+        };
+    }, []);
+
     // Check if current user is the host (compare Farcaster FIDs)
     const isHost = hostData && neynarUser && hostData.fid === neynarUser.fid?.toString();
 
@@ -766,7 +789,7 @@ const HostSpaceContent = () => {
             const roomData = await response.json();
             
             // Write to Firebase so others can join the same room
-            await goLive({
+            const newLiveSpace = await goLive({
                 hostSlug: hostData.hostSlug,
                 hostFid: neynarUser.fid.toString(),
                 dailyRoomUrl: roomData.url,
@@ -779,7 +802,28 @@ const HostSpaceContent = () => {
             await daily.join({
                 url: roomData.url,
                 userName: neynarUser.display_name || neynarUser.username || 'Host',
+                userData: {
+                    isHost: true,
+                    farcasterUsername: neynarUser.username,
+                    displayName: neynarUser.display_name,
+                    pfpUrl: neynarUser.pfp_url,
+                    fid: neynarUser.fid
+                }
             });
+            
+            // Create participant record
+            if (neynarUser.fid && newLiveSpace.currentSessionId) {
+                const participantId = await addParticipant({
+                    sessionId: newLiveSpace.currentSessionId,
+                    hostSlug: hostData.hostSlug,
+                    userFid: neynarUser.fid.toString(),
+                    farcasterUsername: neynarUser.username || '',
+                    displayName: neynarUser.display_name || '',
+                    pfpUrl: neynarUser.pfp_url || '',
+                    role: 'host'
+                });
+                sessionIdRef.current = participantId;
+            }
             
             // Start muted
             daily.setLocalAudio(false);
@@ -807,7 +851,28 @@ const HostSpaceContent = () => {
             await daily.join({
                 url: liveSpace.dailyRoomUrl,
                 userName: neynarUser?.display_name || neynarUser?.username || 'Guest',
+                userData: {
+                    isHost: false, // Explicitly false for joiners
+                    farcasterUsername: neynarUser?.username,
+                    displayName: neynarUser?.display_name,
+                    pfpUrl: neynarUser?.pfp_url,
+                    fid: neynarUser?.fid
+                }
             });
+
+            // Create participant record
+            if (neynarUser?.fid && liveSpace.currentSessionId) {
+                const participantId = await addParticipant({
+                    sessionId: liveSpace.currentSessionId,
+                    hostSlug: hostData.hostSlug,
+                    userFid: neynarUser.fid.toString(),
+                    farcasterUsername: neynarUser.username || '',
+                    displayName: neynarUser.display_name || '',
+                    pfpUrl: neynarUser.pfp_url || '',
+                    role: 'speaker'
+                });
+                sessionIdRef.current = participantId;
+            }
             
             // Start muted
             daily.setLocalAudio(false);
@@ -827,6 +892,10 @@ const HostSpaceContent = () => {
         try {
             await endSpace(liveSpace.hostSlug);
             daily?.leave();
+            if (sessionIdRef.current) {
+                await removeParticipant(sessionIdRef.current);
+                sessionIdRef.current = null;
+            }
             setRoomState('lobby');
         } catch (err) {
             console.error('Error ending space:', err);
@@ -834,15 +903,30 @@ const HostSpaceContent = () => {
     }, [liveSpace, daily]);
 
     // Handle leaving the room
-    const handleLeaveRoom = useCallback(() => {
+    const handleLeaveRoom = useCallback(async () => {
+        if (sessionIdRef.current) {
+            await removeParticipant(sessionIdRef.current);
+            sessionIdRef.current = null;
+        }
         setRoomState('lobby');
     }, []);
 
     // Handle requesting host to start (placeholder - does nothing for now)
-    const handleRequestStart = useCallback(() => {
-        if (!hostData) return;
-        setRequestSent(true);
-    }, [hostData]);
+    const handleRequestStart = useCallback(async () => {
+        if (!hostData || !neynarUser?.signer_uuid) return;
+        
+        // try {
+        //     await neynarClient.postCast(
+        //         neynarUser.signer_uuid,
+        //         `@${hostData.hostSlug} please go live! I'm waiting in your space.`,
+        //         []
+        //     );
+        //     setRequestSent(true);
+        // } catch (err) {
+        //     console.error('Error sending request:', err);
+        //     // Optionally set an error state here if you want to show feedback to the user
+        // }
+    }, [hostData, neynarUser]);
 
     // Volume monitoring loop for ElevenLabs
     useEffect(() => {
@@ -970,9 +1054,40 @@ const HostSpaceContent = () => {
 
     // Joined state - show the room
     if (roomState === 'joined' && liveSpace) {
+        // Construct Host Profile Logic
+        let hostProfile = {
+             username: hostData.hostSlug,
+             displayName: hostData.name, // Fallback
+             pfpUrl: hostData.imageUrl
+        };
+
+        if (isHost && neynarUser) {
+             // 1. If I am the host, use my live data
+             hostProfile = {
+                 username: neynarUser.username,
+                 displayName: neynarUser.display_name || neynarUser.username,
+                 pfpUrl: neynarUser.pfp_url || hostData.imageUrl
+             };
+        } else {
+             // 2. If I am a guest, try to find the host in active sessions
+             // The host session should have the same username/hostSlug
+             const hostSession = activeSessions.find(s => s.status === 'active' && s.farcasterUsername === hostData.hostSlug);
+             if (hostSession) {
+                  hostProfile = {
+                      username: hostSession.farcasterUsername,
+                      displayName: hostSession.displayName,
+                      pfpUrl: hostSession.pfpUrl
+                  };
+             } else if (liveSpace.hostFid) {
+                  // Maybe check by FID?
+                  // ...
+                  // Stick to fallback for now if session not found
+             }
+        }
+
         return (
             <RoomContent 
-                hostData={hostData}
+                hostProfile={hostProfile}
                 liveSpace={liveSpace}
                 isHost={isHost || false}
                 onLeave={handleLeaveRoom}
@@ -982,6 +1097,7 @@ const HostSpaceContent = () => {
                     displayName: neynarUser?.display_name,
                     username: neynarUser?.username,
                 }}
+                activeSessions={activeSessions}
             />
         );
     }

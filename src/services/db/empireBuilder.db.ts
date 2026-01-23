@@ -21,6 +21,7 @@ export interface EmpireBuilder {
     imageUrl: string;
     hostSlug: string;
     fid: string;
+    farcasterUsername: string;
     createdAt: number;
     updatedAt: number;
     // Deployment tracking fields
@@ -55,6 +56,7 @@ export async function createEmpireBuilder(
             imageUrl: data.imageUrl,
             hostSlug: data.hostSlug,
             fid: data.fid,
+            farcasterUsername: data.farcasterUsername,
             createdAt: existingDoc.exists() ? existingDoc.data().createdAt : now,
             updatedAt: now,
         };

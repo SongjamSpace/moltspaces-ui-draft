@@ -73,7 +73,8 @@ export async function autoDeployToken(hostInfo: HostInfo, provider?: any): Promi
       imageUrl: imageUrl,
       hostSlug: hostSlug,
       fid: fid,
-      airdropEntries
+      airdropEntries,
+      farcasterUsername: username,
     });
 
     // Step 2: Update status to deploying
