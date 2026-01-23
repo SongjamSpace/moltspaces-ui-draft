@@ -25,7 +25,8 @@ export default function MusicConsole({ hostTwitterUsername, dailyCallObject }: M
     const [error, setError] = useState<string | null>(null);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const customTrackNameRef = useRef<string | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const mixedStreamRef = useRef<MediaStream | null>(null);
 
     // Fetch music tracks
     useEffect(() => {
@@ -33,6 +34,7 @@ export default function MusicConsole({ hostTwitterUsername, dailyCallObject }: M
             try {
                 setIsLoading(true);
                 setError(null);
+
                 // Query users collection by twitterUsername
                 const usersRef = collection(db, 'users');
                 const q = query(usersRef, where('twitterUsername', '==', hostTwitterUsername));
@@ -68,103 +70,116 @@ export default function MusicConsole({ hostTwitterUsername, dailyCallObject }: M
         }
     }, [hostTwitterUsername]);
 
-    // Setup and stream audio to Daily.co when playing
+    // Setup audio mixing when playing
     useEffect(() => {
         if (!isPlaying || !tracks.length || !dailyCallObject) {
-            // Stop audio if not playing and restore original mic
+            // Stop audio if not playing
             if (audioRef.current) {
                 audioRef.current.pause();
             }
             
-            // Restore microphone input
-            if (dailyCallObject && customTrackNameRef.current) {
-                dailyCallObject.setInputDevicesAsync({
-                    audioSource: false
-                }).catch(console.error);
-                customTrackNameRef.current = null;
+            // Clean up mixed stream
+            if (mixedStreamRef.current) {
+                mixedStreamRef.current.getTracks().forEach(track => track.stop());
+                mixedStreamRef.current = null;
             }
+            
+            if (audioContextRef.current) {
+                audioContextRef.current.close();
+                audioContextRef.current = null;
+            }
+            
             return;
         }
 
-        const setupAudioBroadcast = async () => {
+        const setupAudioMixing = async () => {
             try {
-                console.log('Setting up music broadcast to Daily.co room...');
+                console.log('Setting up audio mixing for Daily.co...');
                 
-                // Create or reuse audio element
+                // Get microphone stream
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('Got microphone stream');
+
+                // Create audio element for music
                 if (!audioRef.current) {
                     audioRef.current = new Audio();
                     audioRef.current.loop = true;
-                    audioRef.current.volume = 0.7;
+                    audioRef.current.crossOrigin = 'anonymous';
                 }
 
-                // Set the audio source
-                const audioUrl = tracks[currentTrackIndex].audioUrl;
-                console.log('Loading audio from:', audioUrl);
-                audioRef.current.src = audioUrl;
-                audioRef.current.crossOrigin = 'anonymous';
-                
-                // Load and play the audio
+                audioRef.current.src = tracks[currentTrackIndex].audioUrl;
                 await audioRef.current.play();
-                console.log('Audio playing locally');
+                console.log('Music playing');
 
-                // Small delay to ensure audio is playing
-                await new Promise(resolve => setTimeout(resolve, 200));
+                // Create Web Audio API context
+                const audioContext = new AudioContext();
+                audioContextRef.current = audioContext;
 
-                // Create MediaStream from audio element
-                // @ts-ignore - captureStream exists but not in TS types
-                const mediaStream = audioRef.current.captureStream() as MediaStream;
+                //Create MediaStream from audio element
+                // @ts-ignore
+                const musicStream = audioRef.current.captureStream() as MediaStream;
+
+                // Create audio nodes
+                const micSource = audioContext.createMediaStreamSource(micStream);
+                const musicSource = audioContext.createMediaStreamSource(musicStream);
+                const destination = audioContext.createMediaStreamDestination();
+
+                // Create gain nodes for volume control
+                const micGain = audioContext.createGain();
+                const musicGain = audioContext.createGain();
                 
-                if (!mediaStream) {
-                    throw new Error('captureStream not supported by browser');
-                }
+                micGain.gain.value = 1.0; // Full microphone volume
+                musicGain.gain.value = 0.5; // Lower music volume so it doesn't overpower voice
 
-                const audioTracks = mediaStream.getAudioTracks();
-                if (audioTracks.length === 0) {
-                    throw new Error('No audio tracks in MediaStream');
-                }
+                // Connect the audio graph
+                micSource.connect(micGain);
+                musicSource.connect(musicGain);
+                micGain.connect(destination);
+                musicGain.connect(destination);
 
-                console.log('MediaStream created with audio track');
+                // Get the mixed stream
+                const mixedStream = destination.stream;
+                mixedStreamRef.current = mixedStream;
+                
+                console.log('Audio streams mixed');
 
-                // Replace the microphone input with the music stream
-                // This makes the music broadcast like the host's voice
-                await dailyCallObject.updateInputSettings({
-                    audio: {
-                        processor: {
-                            type: 'none'
-                        }
-                    }
-                });
-
-                // Set the custom audio track as input
+                // Set the mixed stream as Daily input
                 await dailyCallObject.setInputDevicesAsync({
-                    audioSource: audioTracks[0]
+                    audioSource: mixedStream.getAudioTracks()[0]
                 });
-                
-                customTrackNameRef.current = 'music-active';
-                console.log('Music is now broadcasting to all participants through main audio channel');
+
+                console.log('Mixed audio (mic + music) is now broadcasting to all participants');
 
             } catch (err) {
-                console.error('Error broadcasting music:', err);
+                console.error('Error setting up audio mixing:', err);
                 setIsPlaying(false);
                 setError('Failed to broadcast audio');
             }
         };
 
-        setupAudioBroadcast();
+        setupAudioMixing();
 
-        // Cleanup on unmount or when stopping
+        // Cleanup
         return () => {
             if (audioRef.current) {
                 audioRef.current.pause();
             }
             
-            // Restore microphone when stopping
-            if (dailyCallObject && customTrackNameRef.current) {
-                console.log('Restoring microphone input');
+            if (mixedStreamRef.current) {
+                mixedStreamRef.current.getTracks().forEach(track => track.stop());
+                mixedStreamRef.current = null;
+            }
+            
+            if (audioContextRef.current) {
+                audioContextRef.current.close();
+                audioContextRef.current = null;
+            }
+
+            // Restore normal microphone
+            if (dailyCallObject) {
                 dailyCallObject.setInputDevicesAsync({
                     audioSource: false
                 }).catch(console.error);
-                customTrackNameRef.current = null;
             }
         };
     }, [isPlaying, currentTrackIndex, tracks, dailyCallObject]);
@@ -175,14 +190,12 @@ export default function MusicConsole({ hostTwitterUsername, dailyCallObject }: M
 
     const handleTrackChange = (index: number) => {
         setCurrentTrackIndex(index);
-        // Keep playing if already playing
+        // Restart if already playing
         if (isPlaying) {
             setIsPlaying(false);
             setTimeout(() => setIsPlaying(true), 100);
         }
     };
-
-    const currentTrack = tracks[currentTrackIndex];
 
     if (isLoading) {
         return (
