@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DailyProvider, useDaily, useParticipantIds, useLocalParticipant, DailyAudio } from '@daily-co/daily-react';
 import { useConversation } from '@elevenlabs/react';
 import VoiceOrb from '@/components/songjam/VoiceOrb';
-import SpaceGraph from '@/components/songjam/SpaceGraph';
+import SpaceGraphDOM from '@/components/songjam/SpaceGraphDOM';
 import { getEmpireBuilderByHostSlug, EmpireBuilder } from '@/services/db/empireBuilder.db';
 import SpaceChat from '@/components/songjam/SpaceChat';
 import { 
@@ -21,6 +21,7 @@ import {
 } from '@/services/db/liveSpaces.db';
 import { NeynarAuthButton, useNeynarContext, SIWN_variant } from '@neynar/react';
 import { Mic, MicOff, Users, LogOut, Radio, Crown, Loader2, Send, Wifi, MessageCircle, X } from 'lucide-react';
+import { neynarClient } from '@/services/neynar-client';
 
 // Loading component
 const LoadingSpinner = () => (
@@ -329,7 +330,7 @@ const RoomContent = ({
 
                     <div className="relative z-10 w-full h-full">
                          {/* Space Graph Visualization */}
-                         <SpaceGraph 
+                         <SpaceGraphDOM 
                             hostProfile={hostProfile}
                             activeSessions={activeSessions}
                          />
@@ -974,7 +975,7 @@ const HostSpaceContent = () => {
         // try {
         //     await neynarClient.postCast(
         //         neynarUser.signer_uuid,
-        //         `@${hostData.hostSlug} please go live! I'm waiting in your space.`,
+        //         `@${hostData.farcasterUsername} please go live! I'm waiting in your space.`,
         //         []
         //     );
         //     setRequestSent(true);
