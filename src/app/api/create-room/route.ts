@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       success: true,
       roomId: mockRoomId,
       roomUrl,
-      title: title || 'Songjam Space',
+      title: title || 'MoltSpace',
       description: description || 'AI-powered voice space',
       createdAt: new Date().toISOString()
     });

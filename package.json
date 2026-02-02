@@ -53,6 +53,7 @@
     "@types/react-katex": "^3.0.4",
     "eslint": "^9",
     "eslint-config-next": "15.5.7",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.4",
     "typescript": "^5"

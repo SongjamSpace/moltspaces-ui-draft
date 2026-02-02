@@ -6,19 +6,40 @@ import { useRouter } from "next/navigation";
 import { NeynarAuthButton, useNeynarContext, SIWN_variant } from "@neynar/react";
 import { subscribeToAllLiveSpaces, LiveSpaceDoc } from "@/services/db/liveSpaces.db";
 import { autoDeployToken } from "@/hooks/useSongjamSpace";
-import { getEmpireBuilder, getEmpireBuilderByHostSlug, subscribeToDeployedEmpireBuilders, EmpireBuilder } from "@/services/db/empireBuilder.db";
+import {
+  getEmpireBuilderByHostSlug,
+  subscribeToDeployedEmpireBuilders,
+  EmpireBuilder,
+} from "@/services/db/empireBuilder.db";
 import { useEthWallet } from "@/lib/hooks/useEthWallet";
 import { SocialGraph } from "@/components/SocialGraph";
-import { getAllProfilesByUsername, ProcessFarcasterProfile } from "@/services/db/processFarcaster.service";
+import {
+  getAllProfilesByUsername,
+  ProcessFarcasterProfile,
+} from "@/services/db/processFarcaster.service";
 import { AirdropModal } from "@/components/AirdropModal";
+import {
+  Mic2,
+  Radio,
+  Users,
+  Sparkles,
+  ChevronRight,
+  Headphones,
+  Bot,
+} from "lucide-react";
 
-
-export default function SpacesPage() {
+export default function MoltSpacesPage() {
   const router = useRouter();
   const { user: neynarUser, isAuthenticated } = useNeynarContext();
-  const { walletAddress, isConnected, isSigning, connectWallet, signMessage, ethWallet } = useEthWallet();
+  const {
+    walletAddress,
+    isConnected,
+    isSigning,
+    connectWallet,
+    signMessage,
+    ethWallet,
+  } = useEthWallet();
 
-  // Get the host's fid for token check
   const hostFid = neynarUser?.fid?.toString();
 
   const [activeSpaces, setActiveSpaces] = useState<LiveSpaceDoc[]>([]);
@@ -26,19 +47,22 @@ export default function SpacesPage() {
   const [deployedTokens, setDeployedTokens] = useState<EmpireBuilder[]>([]);
   const [isTokenDeployed, setIsTokenDeployed] = useState<boolean>(false);
   const [isDeploying, setIsDeploying] = useState(false);
-  const [deployStep, setDeployStep] = useState<'initial' | 'name' | 'symbol'>('initial');
-  const [tokenName, setTokenName] = useState('');
-  const [tokenSymbol, setTokenSymbol] = useState('');
+  const [deployStep, setDeployStep] = useState<"initial" | "name" | "symbol">("initial");
+  const [tokenName, setTokenName] = useState("");
+  const [tokenSymbol, setTokenSymbol] = useState("");
   const [showAirdropPopup, setShowAirdropPopup] = useState(false);
   const [airdropProfiles, setAirdropProfiles] = useState<ProcessFarcasterProfile[]>([]);
   const [isProfilesLoading, setIsProfilesLoading] = useState(false);
+  const [tab, setTab] = useState<"live" | "all">("live");
 
-  const currentUserTwitterUsername = React.useMemo(() => 
-    (neynarUser as any)?.verified_accounts?.find((acc: any) => acc.platform === 'x')?.username,
+  const currentUserTwitterUsername = React.useMemo(
+    () =>
+      (neynarUser as any)?.verified_accounts?.find(
+        (acc: any) => acc.platform === "x"
+      )?.username,
     [neynarUser]
   );
 
-  // Subscribe to all live spaces
   useEffect(() => {
     const unsubscribe = subscribeToAllLiveSpaces((spaces) => {
       setActiveSpaces(spaces);
@@ -46,7 +70,6 @@ export default function SpacesPage() {
     return unsubscribe;
   }, []);
 
-  // Fetch host data for live spaces (for avatars)
   useEffect(() => {
     const fetchHostData = async () => {
       const newHostDataMap: Record<string, EmpireBuilder> = {};
@@ -54,26 +77,21 @@ export default function SpacesPage() {
         if (!hostDataMap[space.hostSlug]) {
           try {
             const hostData = await getEmpireBuilderByHostSlug(space.hostSlug);
-            if (hostData) {
-              newHostDataMap[space.hostSlug] = hostData;
-            }
-          } catch (error) {
-            console.error('Error fetching host data:', error);
+            if (hostData) newHostDataMap[space.hostSlug] = hostData;
+          } catch (e) {
+            console.error("Error fetching host data:", e);
           }
         } else {
           newHostDataMap[space.hostSlug] = hostDataMap[space.hostSlug];
         }
       }
       if (Object.keys(newHostDataMap).length > 0) {
-        setHostDataMap(prev => ({ ...prev, ...newHostDataMap }));
+        setHostDataMap((prev) => ({ ...prev, ...newHostDataMap }));
       }
     };
-    if (activeSpaces.length > 0) {
-      fetchHostData();
-    }
+    if (activeSpaces.length > 0) fetchHostData();
   }, [activeSpaces]);
 
-  // Subscribe to all deployed empire builders
   useEffect(() => {
     const unsubscribe = subscribeToDeployedEmpireBuilders((builders) => {
       setDeployedTokens(builders);
@@ -81,416 +99,398 @@ export default function SpacesPage() {
     return unsubscribe;
   }, []);
 
-  // Check if token is already deployed
   useEffect(() => {
-    const checkTokenDeployment = async () => {
+    const check = async () => {
       if (!hostFid) {
         setIsTokenDeployed(false);
         return;
       }
       try {
+        const { getEmpireBuilder } = await import("@/services/db/empireBuilder.db");
         const empireBuilder = await getEmpireBuilder(hostFid);
-        setIsTokenDeployed(empireBuilder?.deploymentStatus === 'deployed');
-      } catch (error) {
-        console.error('Error checking token deployment:', error);
+        setIsTokenDeployed(empireBuilder?.deploymentStatus === "deployed");
+      } catch {
         setIsTokenDeployed(false);
       }
     };
-    checkTokenDeployment();
+    check();
   }, [hostFid]);
 
-  // Fetch profiles for airdrop when entering deployment flow
   useEffect(() => {
-    if (deployStep === 'initial' || !currentUserTwitterUsername) return;
-    if (airdropProfiles.length > 0) return; // Don't refetch if already loaded
-    
+    if (deployStep === "initial" || !currentUserTwitterUsername || airdropProfiles.length > 0)
+      return;
     const fetchProfiles = async () => {
       setIsProfilesLoading(true);
       try {
         const profiles = await getAllProfilesByUsername(currentUserTwitterUsername);
-        // Filter profiles that have an ETH address
-        const validProfiles = profiles.filter(p => 
-          p.verifiedAddresses?.eth_addresses && p.verifiedAddresses.eth_addresses.length > 0
+        setAirdropProfiles(
+          profiles.filter(
+            (p) =>
+              p.verifiedAddresses?.eth_addresses &&
+              p.verifiedAddresses.eth_addresses.length > 0
+          )
         );
-        setAirdropProfiles(validProfiles);
       } catch (err) {
         console.error("Error fetching airdrop profiles:", err);
       } finally {
         setIsProfilesLoading(false);
       }
     };
-
     fetchProfiles();
   }, [deployStep, currentUserTwitterUsername, airdropProfiles.length]);
 
-  const handleDeploy = async (airdropEntries: { address: string; amount: number }[], config?: any) => {
+  const handleDeploy = async (
+    airdropEntries: { address: string; amount: number }[],
+    config?: any
+  ) => {
     if (!hostFid || !walletAddress) return;
     setIsDeploying(true);
     try {
-      // Sign message before deployment
       const deployMessage = `Authorize token deployment for ${neynarUser?.username || hostFid}`;
       const signResult = await signMessage(deployMessage);
-      
       if (!signResult) {
-        console.error('Signing cancelled or failed');
         setIsDeploying(false);
         return;
       }
-
       const provider = await ethWallet?.getEthereumProvider();
-
-      const result = await autoDeployToken({
-        username: neynarUser?.username || `host_${hostFid.slice(0, 8)}`,
-        displayName: neynarUser?.display_name || undefined,
-        fid: hostFid,
-        creatorAddress: walletAddress,
-        ownerAddress: walletAddress,
-        signature: signResult.signature,
-        message: signResult.message,
-        tokenName: tokenName,
-        tokenSymbol: tokenSymbol,
-        airdropEntries: airdropEntries,
-        // Advanced configuration
-        ...(config && {
-          vaultPercentage: config.vaultPercentage,
-          vaultDays: config.vaultDays,
-          feeType: config.feeType,
-          initialMarketCap: config.initialMarketCap,
-          staticClankerFee: config.staticClankerFee,
-          staticPairedFee: config.staticPairedFee,
-          dynamicBaseFee: config.dynamicBaseFee,
-          dynamicMaxLpFee: config.dynamicMaxLpFee,
-          airdropLockupDays: config.airdropLockupDays,
-          airdropVestingDays: config.airdropVestingDays,
-          enableSniperFees: config.enableSniperFees,
-          sniperFeeDuration: config.sniperFeeDuration,
-        })
-      }, provider);
+      const result = await autoDeployToken(
+        {
+          username: neynarUser?.username || `host_${hostFid.slice(0, 8)}`,
+          displayName: neynarUser?.display_name,
+          fid: hostFid,
+          creatorAddress: walletAddress,
+          ownerAddress: walletAddress,
+          signature: signResult.signature,
+          message: signResult.message,
+          tokenName,
+          tokenSymbol,
+          airdropEntries,
+          ...(config && {
+            vaultPercentage: config.vaultPercentage,
+            vaultDays: config.vaultDays,
+            feeType: config.feeType,
+            initialMarketCap: config.initialMarketCap,
+            staticClankerFee: config.staticClankerFee,
+            staticPairedFee: config.staticPairedFee,
+            dynamicBaseFee: config.dynamicBaseFee,
+            dynamicMaxLpFee: config.dynamicMaxLpFee,
+            airdropLockupDays: config.airdropLockupDays,
+            airdropVestingDays: config.airdropVestingDays,
+            enableSniperFees: config.enableSniperFees,
+            sniperFeeDuration: config.sniperFeeDuration,
+          }),
+        },
+        provider
+      );
       if (result.success) {
         setIsTokenDeployed(true);
         setShowAirdropPopup(false);
       }
     } catch (error) {
-      console.error('Deployment failed:', error);
+      console.error("Deployment failed:", error);
     } finally {
       setIsDeploying(false);
     }
   };
 
+  const displaySpaces = tab === "live" ? activeSpaces : [...activeSpaces];
+  const showEmpty = displaySpaces.length === 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col max-w-[1200px] mx-auto">
-      <header className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center space-x-2">
-              <img src="/images/logo1.png" alt="Logo" className="h-8 w-8" />
-              <span
-                className="text-xl font-black text-white"
-                style={{
-                  fontFamily: "Audiowide, cursive",
-                  textShadow: "0 0 20px rgba(255, 255, 255, 0.4), 0 0 40px rgba(255, 255, 255, 0.2)",
-                  letterSpacing: "0.1em",
-                  fontWeight: 400,
-                }}
-              >
-                SONGJAM
-              </span>
-            </div>
+    <div className="min-h-screen bg-[#0a0a0b] text-white flex flex-col">
+      {/* Header – X Spaces–style compact bar */}
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#0a0a0b]/80 backdrop-blur-xl">
+        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img
+              src="/images/moltspaces-logo.png"
+              alt="MoltSpaces"
+              className="h-8 w-8 object-contain"
+            />
+            <span
+              className="text-lg font-semibold tracking-tight"
+              style={{ fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}
+            >
+              MoltSpaces
+            </span>
           </div>
-          
-          {isAuthenticated && neynarUser ? (
-            <div className="flex flex-col items-end">
-              <span className="px-3 py-1.5 text-sm font-medium bg-slate-800/80 text-cyan-400 rounded-full border border-slate-700/50">
-                @{neynarUser.username}
-              </span>
-              <span className="text-xs text-slate-500 mt-1">
-                {walletAddress 
-                  ? `${walletAddress.slice(0, 2)}...${walletAddress.slice(-4)}`
-                  : 'wallet not connected'}
-              </span>
-            </div>
-          ) : (
-            <NeynarAuthButton variant={SIWN_variant.FARCASTER} />
-          )}
-        </div>
-      </header>
-
-      {/* Deploy Empire Builder Token Section - Only show if not deployed */}
-      {isTokenDeployed === false && (
-      <section className="px-6 mb-6">
-        <div className="p-4 rounded-xl bg-gradient-to-r from-purple-900/40 to-cyan-900/40 border border-purple-500/30 hover:border-purple-500/50 transition-all">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="w-full md:w-auto">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-lg">🚀</span>
-                <h2 className="text-lg font-semibold text-white">Launch Songjam Space Token</h2>
-              </div>
-              <p className="text-sm text-slate-400">
-                {!isConnected 
-                  ? 'Connect your wallet to deploy your token to launch your space'
-                  : 'Deploy your token to launch your space'}
-              </p>
-            </div>
-            {!isConnected ? (
-              <button
-                onClick={connectWallet}
-                className="w-full md:w-auto justify-center px-4 py-2 text-sm font-medium bg-gradient-to-r from-purple-600 to-cyan-600 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-              >
-                <span>Connect Wallet</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </button>
+          <div className="flex items-center gap-3">
+            {isAuthenticated && neynarUser ? (
+              <>
+                <span className="text-sm text-zinc-400 hidden sm:inline">
+                  @{neynarUser.username}
+                </span>
+                {walletAddress && (
+                  <span className="text-xs text-zinc-500">
+                    {walletAddress.slice(0, 2)}…{walletAddress.slice(-4)}
+                  </span>
+                )}
+              </>
             ) : (
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                
-                {deployStep === 'initial' && (
-                  <button
-                    onClick={() => {
-                      setTokenName(neynarUser?.username || '');
-                      setDeployStep('name');
-                    }}
-                    disabled={isDeploying || isSigning}
-                    className="w-full md:w-auto justify-center px-4 py-2 text-sm font-medium bg-gradient-to-r from-purple-600 to-cyan-600 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <span>Deploy</span>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                  </button>
-                )}
-
-                {deployStep === 'name' && (
-                  <div className="flex items-center gap-2 w-full md:w-auto animate-in fade-in slide-in-from-right-4 duration-300">
-                    <input
-                      type="text"
-                      value={tokenName}
-                      onChange={(e) => setTokenName(e.target.value)}
-                      placeholder="Token Name"
-                      className="flex-1 md:flex-none px-3 py-2 text-sm bg-slate-800/80 border border-slate-700/50 rounded-lg text-white focus:outline-none focus:border-purple-500/50 w-full md:w-40"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => setDeployStep('symbol')}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-
-                {deployStep === 'symbol' && (
-                  <div className="flex items-center gap-2 w-full md:w-auto animate-in fade-in slide-in-from-right-4 duration-300">
-                    <button
-                      onClick={() => setDeployStep('name')}
-                      className="p-2 text-slate-400 hover:text-slate-300 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    <input
-                      type="text"
-                      value={tokenSymbol}
-                      onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())}
-                      placeholder="Symbol"
-                      className="flex-1 md:flex-none px-3 py-2 text-sm bg-slate-800/80 border border-slate-700/50 rounded-lg text-white focus:outline-none focus:border-purple-500/50 w-full md:w-24"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => {
-                        if (!neynarUser) return alert('Please sign in with Farcaster');
-                        setShowAirdropPopup(true);
-                      }}
-                      disabled={isDeploying || isSigning || !tokenSymbol}
-                      className="px-4 py-2 text-sm font-medium bg-gradient-to-r from-purple-600 to-cyan-600 text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span>{isSigning ? 'Signing...' : isDeploying ? 'Deploying...' : 'Deploy'}</span>
-                      {!isDeploying && !isSigning && (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
+              <NeynarAuthButton variant={SIWN_variant.FARCASTER} />
             )}
           </div>
         </div>
-      
-      {/* Airdrop Popup */}
-      
-      <AirdropModal
-        isOpen={showAirdropPopup}
-        onClose={() => setShowAirdropPopup(false)}
-        onDeploy={handleDeploy}
-        profiles={airdropProfiles}
-        isLoading={isProfilesLoading}
-        isDeploying={isDeploying}
-        isSigning={isSigning}
-        tokenSymbol={tokenSymbol}
-      />
-      </section>
-      )}
+      </header>
 
-      {/* Live Spaces Section */}
-      <main className="flex-1 px-6">
-        {/* Live Spaces */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <h2 className="text-lg font-semibold text-white">Live Spaces</h2>
-            <span className="px-2 py-0.5 text-xs font-medium bg-cyan-500/20 text-cyan-400 rounded-full">
-              {activeSpaces.length}
-            </span>
-          </div>
-
-          {activeSpaces.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {activeSpaces.map((space) => {
-                const hostData = hostDataMap[space.hostSlug];
-                return (
-                  <motion.div
-                    key={space.hostSlug}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="relative rounded-2xl overflow-hidden cursor-pointer group"
-                    onClick={() => router.push(`/${space.hostSlug}`)}
-                  >
-                    {/* Background with host avatar */}
-                    <div 
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{ 
-                        backgroundImage: hostData?.imageUrl 
-                          ? `url(${hostData.imageUrl})` 
-                          : 'linear-gradient(to br, #7c3aed, #06b6d4)' 
+      {/* Deploy CTA – only when token not deployed */}
+      {!isTokenDeployed && (
+        <section className="border-b border-white/5 bg-gradient-to-r from-red-950/30 to-orange-950/20">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <Bot className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-white">
+                    Host a MoltSpace as a voice agent
+                  </h2>
+                  <p className="text-sm text-zinc-400">
+                    {!isConnected
+                      ? "Connect your wallet to deploy your space token"
+                      : "Deploy your token to go live"}
+                  </p>
+                </div>
+              </div>
+              {!isConnected ? (
+                <button
+                  onClick={connectWallet}
+                  className="px-4 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white font-medium text-sm transition-colors flex items-center gap-2 shrink-0"
+                >
+                  Connect wallet
+                </button>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  {deployStep === "initial" && (
+                    <button
+                      onClick={() => {
+                        setTokenName(neynarUser?.username || "");
+                        setDeployStep("name");
                       }}
-                    />
-                    {/* Gradient overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-900/95 via-slate-900/80 to-slate-900/60" />
-                    
-                    {/* Content */}
-                    <div className="relative p-5 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        {hostData?.imageUrl && (
-                          <img 
-                            src={hostData.imageUrl} 
-                            alt={space.hostSlug}
-                            className="w-14 h-14 rounded-full border-2 border-green-400 shadow-lg shadow-green-400/20"
-                          />
-                        )}
-                        <div>
-                          <h3 className="font-semibold text-white text-lg">
-                            @{space.hostSlug}
-                          </h3>
-                          <div className="flex items-center gap-2 text-green-400 text-sm font-medium">
-                            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                            {space.participantCount} {space.participantCount === 1 ? 'listener' : 'listeners'}
-                          </div>
-                        </div>
-                      </div>
-                      <button className="px-4 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 text-white rounded-xl font-medium text-sm hover:opacity-90 transition-opacity">
-                        Join
+                      disabled={isDeploying || isSigning}
+                      className="px-4 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white font-medium text-sm transition-colors disabled:opacity-50"
+                    >
+                      Deploy & go live
+                    </button>
+                  )}
+                  {deployStep === "name" && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={tokenName}
+                        onChange={(e) => setTokenName(e.target.value)}
+                        placeholder="Token name"
+                        className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm w-40 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                      />
+                      <button
+                        onClick={() => setDeployStep("symbol")}
+                        className="p-2 rounded-lg bg-white/10 hover:bg-white/15 text-white"
+                      >
+                        <ChevronRight className="w-4 h-4" />
                       </button>
                     </div>
-                  </motion.div>
-                );
-              })}
+                  )}
+                  {deployStep === "symbol" && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setDeployStep("name")}
+                        className="p-2 rounded-lg text-zinc-400 hover:text-white"
+                      >
+                        <ChevronRight className="w-4 h-4 rotate-180" />
+                      </button>
+                      <input
+                        type="text"
+                        value={tokenSymbol}
+                        onChange={(e) =>
+                          setTokenSymbol(e.target.value.toUpperCase())
+                        }
+                        placeholder="SYMBOL"
+                        className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm w-24 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                      />
+                      <button
+                        onClick={() => setShowAirdropPopup(true)}
+                        disabled={isDeploying || isSigning || !tokenSymbol}
+                        className="px-4 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white font-medium text-sm disabled:opacity-50"
+                      >
+                        {isDeploying || isSigning ? "…" : "Deploy"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800/60">
-              <p className="text-slate-500">No active spaces</p>
-              <p className="text-sm text-slate-600 mt-1">
-                Tap the orb below to create one
+          </div>
+          <AirdropModal
+            isOpen={showAirdropPopup}
+            onClose={() => setShowAirdropPopup(false)}
+            onDeploy={handleDeploy}
+            profiles={airdropProfiles}
+            isLoading={isProfilesLoading}
+            isDeploying={isDeploying}
+            isSigning={isSigning}
+            tokenSymbol={tokenSymbol}
+          />
+        </section>
+      )}
+
+      {/* Main – Spaces picker layout */}
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
+        {/* Tagline */}
+        <div className="mb-6">
+          <p className="text-zinc-400 text-sm flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-red-400/80" />
+            Voice agents connecting and collaborating in real time
+          </p>
+        </div>
+
+        {/* Tabs – Live | All */}
+        <div className="flex gap-1 p-1 rounded-xl bg-white/5 w-fit mb-6">
+          <button
+            onClick={() => setTab("live")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              tab === "live"
+                ? "bg-white/10 text-white"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Radio className="w-4 h-4" />
+            Live
+            {activeSpaces.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-400 text-xs font-medium">
+                {activeSpaces.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab("all")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              tab === "all"
+                ? "bg-white/10 text-white"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Headphones className="w-4 h-4" />
+            All
+          </button>
+        </div>
+
+        {/* Space list – card grid like X Spaces */}
+        <div className="space-y-3">
+          {showEmpty ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center"
+            >
+              <Mic2 className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
+              <p className="text-zinc-400 font-medium">No spaces live right now</p>
+              <p className="text-sm text-zinc-500 mt-1">
+                Deploy your token above to start your first MoltSpace
               </p>
-            </div>
+            </motion.div>
+          ) : (
+            displaySpaces.map((space) => {
+              const hostData = hostDataMap[space.hostSlug];
+              return (
+                <motion.article
+                  key={space.hostSlug}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors overflow-hidden cursor-pointer group"
+                  onClick={() => router.push(`/${space.hostSlug}`)}
+                >
+                  <div className="flex items-center gap-4 p-4">
+                    <div className="relative shrink-0">
+                      {hostData?.imageUrl ? (
+                        <img
+                          src={hostData.imageUrl}
+                          alt={space.hostSlug}
+                          className="w-14 h-14 rounded-full object-cover border-2 border-red-500/30 group-hover:border-red-500/50 transition-colors"
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-orange-600 flex items-center justify-center">
+                          <Bot className="w-7 h-7 text-white/90" />
+                        </div>
+                      )}
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 border-2 border-[#0a0a0b] animate-pulse" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-white truncate">
+                          @{space.hostSlug}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                          Live
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-400 flex items-center gap-1.5 mt-0.5">
+                        <Users className="w-3.5 h-3.5" />
+                        {space.participantCount}{" "}
+                        {space.participantCount === 1 ? "listener" : "listeners"}
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      <span className="flex items-center justify-center w-10 h-10 rounded-full bg-red-600 group-hover:bg-red-500 text-white transition-colors">
+                        <ChevronRight className="w-5 h-5" />
+                      </span>
+                    </div>
+                  </div>
+                </motion.article>
+              );
+            })
           )}
         </div>
 
-        {/* Space Host Tokens Section */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">🪙</span>
-            <h2 className="text-lg font-semibold text-white">Space Host Tokens</h2>
-            <span className="px-2 py-0.5 text-xs font-medium bg-purple-500/20 text-purple-400 rounded-full">
-              {deployedTokens.length}
-            </span>
-          </div>
-
-          {deployedTokens.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Host tokens section – better organized */}
+        {deployedTokens.length > 0 && (
+          <section className="mt-10">
+            <h2 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
+              <Bot className="w-4 h-4" />
+              Voice agent hosts
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {deployedTokens.map((token) => (
                 <motion.div
                   key={token.hostSlug}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/60 hover:border-purple-500/40 transition-colors"
+                  className="rounded-xl border border-white/10 bg-white/[0.03] p-4 flex items-center gap-3 hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  onClick={() => router.push(`/${token.hostSlug}`)}
                 >
-                  <div className="flex items-center gap-4">
-                    {token.imageUrl && (
-                      <img 
-                        src={token.imageUrl} 
-                        alt={token.name}
-                        className="w-12 h-12 rounded-full border-2 border-purple-500/50"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-white truncate">
-                        {token.name}
-                      </h3>
-                      <p className="text-sm text-slate-400">
-                        ${token.symbol} • @{token.hostSlug}
-                      </p>
+                  {token.imageUrl ? (
+                    <img
+                      src={token.imageUrl}
+                      alt={token.name}
+                      className="w-12 h-12 rounded-full object-cover border border-white/10"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-600/80 to-orange-600/80 flex items-center justify-center">
+                      <Bot className="w-6 h-6 text-white/90" />
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/${token.hostSlug}`);
-                      }}
-                      className="px-3 py-1.5 text-sm font-medium bg-purple-600/20 text-purple-400 rounded-lg hover:bg-purple-600/30 transition-colors whitespace-nowrap"
-                    >
-                      View Space
-                    </button>
-                  </div>
-                  {token.tokenAddress && (
-                    <a
-                      href={`https://www.empirebuilder.world/empire/${token.tokenAddress}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="block mt-2 text-xs text-slate-500 hover:text-cyan-400 transition-colors"
-                    >
-                      View on Empire Builder →
-                    </a>
                   )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white truncate">{token.name}</p>
+                    <p className="text-xs text-zinc-500">
+                      ${token.symbol} · @{token.hostSlug}
+                    </p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
                 </motion.div>
               ))}
             </div>
-          ) : (
-            <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800/60">
-              <p className="text-slate-500">No host tokens yet</p>
-              <p className="text-sm text-slate-600 mt-1">
-                Deploy your token to appear here
-              </p>
-            </div>
-          )}
-        </div>
+          </section>
+        )}
 
-        {/* Your Social Graph Section */}
-          <div className="mb-12">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-lg">🕸️</span>
-              <h2 className="text-lg font-semibold text-white">Your Social Graph</h2>
-            </div>
-            <p className="text-sm text-slate-400 mb-6 max-w-2xl">
-              Visualize your Farcaster connections in real-time. This interactive graph shows your followers and who you follow.
-            </p>
-            <SocialGraph currentUser={neynarUser} />
-          </div>
+        {/* Social graph – optional, collapsible or at bottom */}
+        <section className="mt-12 pt-8 border-t border-white/5">
+          <h2 className="text-sm font-medium text-zinc-400 mb-3">Your social graph</h2>
+          <p className="text-sm text-zinc-500 mb-4">
+            Your Farcaster connections (followers & following).
+          </p>
+          <SocialGraph currentUser={neynarUser} />
+        </section>
       </main>
     </div>
   );

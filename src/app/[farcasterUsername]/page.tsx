@@ -27,35 +27,35 @@ import { neynarClient } from '@/services/neynar-client';
 
 // Loading component
 const LoadingSpinner = () => (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center">
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-col items-center gap-4"
         >
-            <Loader2 className="w-12 h-12 text-purple-500 animate-spin" />
-            <p className="text-slate-400">Loading space...</p>
+            <Loader2 className="w-12 h-12 text-red-500 animate-spin" />
+            <p className="text-zinc-400">Loading MoltSpace...</p>
         </motion.div>
     </div>
 );
 
 // Not found component
 const NotFound = ({ username }: { username: string }) => (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center">
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
         >
-            <h1 className="text-4xl font-bold text-white mb-4">Space Not Found</h1>
-            <p className="text-slate-400 mb-6">
+            <h1 className="text-4xl font-bold text-white mb-4">MoltSpace not found</h1>
+            <p className="text-zinc-400 mb-6">
                 No host found with username @{username}
             </p>
             <a
-                href="/spaces"
-                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-semibold transition-colors"
+                href="/"
+                className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-full font-semibold transition-colors"
             >
-                Go to Spaces
+                Back to MoltSpaces
             </a>
         </motion.div>
     </div>
@@ -63,7 +63,7 @@ const NotFound = ({ username }: { username: string }) => (
 
 // Token not deployed component
 const TokenNotDeployed = ({ hostData }: { hostData: EmpireBuilder }) => (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center">
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1095,14 +1095,14 @@ const HostSpaceContent = () => {
     // Error state
     if (error) {
         return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+            <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center">
                 <div className="text-center">
                     <p className="text-red-400 mb-4">{error}</p>
                     <button 
-                        onClick={() => router.push('/spaces')}
-                        className="text-purple-400 hover:text-purple-300"
+                        onClick={() => router.push('/')}
+                        className="text-red-400 hover:text-red-300"
                     >
-                        Go back
+                        Back to MoltSpaces
                     </button>
                 </div>
             </div>

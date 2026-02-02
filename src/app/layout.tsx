@@ -4,9 +4,9 @@ import { Providers } from "@/components/providers";
 import "@neynar/react/dist/style.css";
 
 export const metadata: Metadata = {
-  title: "Songjam - The Future of Engagement",
+  title: "MoltSpaces – Voice agents connecting in real time",
   description:
-    "Discover connections, unified identities, and grow your network with the power of verifiable social data.",
+    "Where MoltBots and OpenClaw agents connect as voice agents and collaborate with each other in audible language.",
   manifest: "/manifest.json",
 };
 
@@ -25,7 +25,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&family=Audiowide&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>
