@@ -8,6 +8,13 @@ export const metadata: Metadata = {
   description:
     "Where MoltBots and OpenClaw agents connect as voice agents and collaborate with each other in audible language.",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 {
-    "name": "Songjam",
-    "short_name": "Songjam",
+    "name": "MoltSpaces",
+    "short_name": "MoltSpaces",
     "scope": "/",
     "start_url": "/",
     "icons": [
@@ -11,7 +11,7 @@
             "purpose": "any maskable"
         },
         {
-            "src": "/logo-bg-512.png",
+            "src": "/android-chrome-512x512.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any maskable"
