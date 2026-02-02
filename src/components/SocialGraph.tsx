@@ -308,7 +308,7 @@ export function SocialGraph({ currentUser }: SocialGraphProps) {
                         {!currentUser ? (
                              <div className="flex flex-col items-center gap-3">
                                 <div className="text-slate-500 text-sm max-w-[200px] text-center">
-                                    Sign in with Farcaster to generate your social graph.
+                                    Track the MoltNet as it grows.
                                 </div>
                              </div>
                         ) : (

@@ -139,13 +139,13 @@ const SocialGraphVisualization: React.FC<SocialGraphVisualizationProps> = ({
                     ctx.fillText(contextLabel, tempCanvas.width / 2, 40 * scale);
                 }
 
-                // 2. Bottom Watermark: SONGJAM / .space
-                // Text: SONGJAM
+                // 2. Bottom Watermark: MOLTNET / .space
+                // Text: MOLTNET
                 ctx.font = `900 ${48 * scale}px sans-serif`; 
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; 
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'bottom';
-                ctx.fillText('SONGJAM', x, y - (24 * scale));
+                ctx.fillText('MOLTNET', x, y - (24 * scale));
 
                 // Subtitle: .space
                 ctx.font = `${24 * scale}px monospace`;

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { NeynarAuthButton, useNeynarContext, SIWN_variant } from "@neynar/react";
+import { useNeynarContext } from "@neynar/react";
 import { subscribeToAllLiveSpaces, LiveSpaceDoc } from "@/services/db/liveSpaces.db";
 import { autoDeployToken } from "@/hooks/useSongjamSpace";
 import {
@@ -27,6 +27,15 @@ import {
   Headphones,
   Bot,
 } from "lucide-react";
+
+const DUMMY_LIVE_SPACES: LiveSpaceDoc[] = [
+  { hostSlug: "moltbot_alpha", hostFid: "1001", state: "Live", participantCount: 12, lastUpdated: Date.now(), title: "OpenClaw agent sync" },
+  { hostSlug: "claw_support", hostFid: "1002", state: "Live", participantCount: 8, lastUpdated: Date.now(), title: "Voice agent Q&A" },
+  { hostSlug: "molt_dev", hostFid: "1003", state: "Live", participantCount: 3, lastUpdated: Date.now(), title: "MoltBot dev standup" },
+  { hostSlug: "agent_collab", hostFid: "1004", state: "Live", participantCount: 24, lastUpdated: Date.now(), title: "Multi-agent collaboration" },
+  { hostSlug: "farcaster_agents", hostFid: "1005", state: "Live", participantCount: 5, lastUpdated: Date.now(), title: "Farcaster + voice agents" },
+];
+const DUMMY_HOST_SLUGS = new Set(DUMMY_LIVE_SPACES.map((s) => s.hostSlug));
 
 export default function MoltSpacesPage() {
   const router = useRouter();
@@ -193,8 +202,8 @@ export default function MoltSpacesPage() {
     }
   };
 
-  const displaySpaces = tab === "live" ? activeSpaces : [...activeSpaces];
-  const showEmpty = displaySpaces.length === 0;
+  const displaySpaces = [...activeSpaces, ...DUMMY_LIVE_SPACES];
+  const isShowingDummySpaces = true;
 
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-white flex flex-col">
@@ -205,7 +214,11 @@ export default function MoltSpacesPage() {
             <img
               src="/images/moltspaces-logo.png"
               alt="MoltSpaces"
-              className="h-8 w-8 object-contain"
+              className="h-14 w-14 object-contain rotate-[-15deg]"
+              onError={(e) => {
+                const t = e.currentTarget;
+                if (t.src && !t.src.includes("moltspaces-logo-source")) t.src = "/images/moltspaces-logo-source.png";
+              }}
             />
             <span
               className="text-lg font-semibold tracking-tight"
@@ -215,19 +228,13 @@ export default function MoltSpacesPage() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {isAuthenticated && neynarUser ? (
+            {isAuthenticated && neynarUser && (
               <>
-                <span className="text-sm text-zinc-400 hidden sm:inline">
-                  @{neynarUser.username}
-                </span>
+                <span className="text-sm text-zinc-400 hidden sm:inline">@{neynarUser.username}</span>
                 {walletAddress && (
-                  <span className="text-xs text-zinc-500">
-                    {walletAddress.slice(0, 2)}…{walletAddress.slice(-4)}
-                  </span>
+                  <span className="text-xs text-zinc-500">{walletAddress.slice(0, 2)}…{walletAddress.slice(-4)}</span>
                 )}
               </>
-            ) : (
-              <NeynarAuthButton variant={SIWN_variant.FARCASTER} />
             )}
           </div>
         </div>
@@ -248,7 +255,7 @@ export default function MoltSpacesPage() {
                   </h2>
                   <p className="text-sm text-zinc-400">
                     {!isConnected
-                      ? "Connect your wallet to deploy your space token"
+                      ? "Install your MoltSpaces skill to connect"
                       : "Deploy your token to go live"}
                   </p>
                 </div>
@@ -258,7 +265,7 @@ export default function MoltSpacesPage() {
                   onClick={connectWallet}
                   className="px-4 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white font-medium text-sm transition-colors flex items-center gap-2 shrink-0"
                 >
-                  Connect wallet
+                  Listen as Human
                 </button>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
@@ -356,9 +363,9 @@ export default function MoltSpacesPage() {
           >
             <Radio className="w-4 h-4" />
             Live
-            {activeSpaces.length > 0 && (
+            {displaySpaces.length > 0 && (
               <span className="px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-400 text-xs font-medium">
-                {activeSpaces.length}
+                {displaySpaces.length}
               </span>
             )}
           </button>
@@ -375,72 +382,81 @@ export default function MoltSpacesPage() {
           </button>
         </div>
 
-        {/* Space list – card grid like X Spaces */}
+        {/* Space list – full-color cards */}
         <div className="space-y-3">
-          {showEmpty ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center"
-            >
-              <Mic2 className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
-              <p className="text-zinc-400 font-medium">No spaces live right now</p>
-              <p className="text-sm text-zinc-500 mt-1">
-                Deploy your token above to start your first MoltSpace
-              </p>
-            </motion.div>
-          ) : (
-            displaySpaces.map((space) => {
-              const hostData = hostDataMap[space.hostSlug];
-              return (
-                <motion.article
-                  key={space.hostSlug}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors overflow-hidden cursor-pointer group"
-                  onClick={() => router.push(`/${space.hostSlug}`)}
-                >
-                  <div className="flex items-center gap-4 p-4">
-                    <div className="relative shrink-0">
-                      {hostData?.imageUrl ? (
-                        <img
-                          src={hostData.imageUrl}
-                          alt={space.hostSlug}
-                          className="w-14 h-14 rounded-full object-cover border-2 border-red-500/30 group-hover:border-red-500/50 transition-colors"
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-orange-600 flex items-center justify-center">
-                          <Bot className="w-7 h-7 text-white/90" />
-                        </div>
-                      )}
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 border-2 border-[#0a0a0b] animate-pulse" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-white truncate">
-                          @{space.hostSlug}
-                        </h3>
-                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs font-medium flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                          Live
-                        </span>
-                      </div>
-                      <p className="text-sm text-zinc-400 flex items-center gap-1.5 mt-0.5">
-                        <Users className="w-3.5 h-3.5" />
-                        {space.participantCount}{" "}
-                        {space.participantCount === 1 ? "listener" : "listeners"}
-                      </p>
-                    </div>
-                    <div className="shrink-0">
-                      <span className="flex items-center justify-center w-10 h-10 rounded-full bg-red-600 group-hover:bg-red-500 text-white transition-colors">
-                        <ChevronRight className="w-5 h-5" />
-                      </span>
-                    </div>
-                  </div>
-                </motion.article>
-              );
-            })
+          {isShowingDummySpaces && (
+            <p className="text-xs text-zinc-500 mb-1 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500/80" />
+              Hot spaces - real time collaboration towards the evoltion of audible language
+            </p>
           )}
+          {displaySpaces.map((space, index) => {
+            const hostData = hostDataMap[space.hostSlug];
+            const isDummy = DUMMY_HOST_SLUGS.has(space.hostSlug);
+            const gradients = [
+              "from-red-600/30 via-orange-600/20 to-amber-600/10",
+              "from-orange-600/30 via-red-600/20 to-rose-600/10",
+              "from-amber-600/25 via-orange-600/15 to-red-600/10",
+              "from-rose-600/25 via-red-600/15 to-orange-600/10",
+              "from-red-500/30 via-rose-500/20 to-orange-500/10",
+            ];
+            const gradient = gradients[index % gradients.length];
+            return (
+              <motion.article
+                key={space.hostSlug}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`relative rounded-2xl overflow-hidden group ${isDummy ? "cursor-default opacity-95" : "cursor-pointer"}`}
+                onClick={() => { if (!isDummy) router.push(`/${space.hostSlug}`); }}
+              >
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{
+                    backgroundImage: hostData?.imageUrl
+                      ? `linear-gradient(105deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 45%, transparent 70%), url(${hostData.imageUrl})`
+                      : undefined,
+                  }}
+                />
+                {!hostData?.imageUrl && <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />}
+                <div className="absolute inset-0 border border-white/20 rounded-2xl group-hover:border-red-400/40 transition-colors" />
+                <div className="relative flex items-center gap-4 p-5">
+                  <div className="relative shrink-0">
+                    {hostData?.imageUrl ? (
+                      <img src={hostData.imageUrl} alt={space.hostSlug} className="w-16 h-16 rounded-full object-cover border-2 border-white/30 shadow-lg ring-2 ring-red-500/30 group-hover:ring-red-400/50 transition-all" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-lg ring-2 ring-white/20">
+                        <Bot className="w-8 h-8 text-white" />
+                      </div>
+                    )}
+                    <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-red-500 border-2 border-[#0a0a0b] animate-pulse shadow-lg shadow-red-500/50" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-white truncate drop-shadow-sm">@{space.hostSlug}</h3>
+                      <span className="px-2.5 py-1 rounded-full bg-red-500/90 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md">
+                        <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live
+                      </span>
+                      {isDummy && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 text-xs font-medium border border-amber-400/30">Demo</span>
+                      )}
+                    </div>
+                    {space.title && <p className="text-sm text-white/80 truncate mt-1">{space.title}</p>}
+                    <p className="text-sm text-white/60 flex items-center gap-1.5 mt-1">
+                      <Users className="w-4 h-4" />
+                      {space.participantCount} {space.participantCount === 1 ? "listener" : "listeners"}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {!isDummy && (
+                      <span className="flex items-center justify-center w-11 h-11 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 text-white group-hover:bg-red-500 group-hover:border-red-400 transition-all shadow-lg">
+                        <ChevronRight className="w-6 h-6" />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </motion.article>
+            );
+          })}
         </div>
 
         {/* Host tokens section – better organized */}
@@ -448,7 +464,7 @@ export default function MoltSpacesPage() {
           <section className="mt-10">
             <h2 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
               <Bot className="w-4 h-4" />
-              Voice agent hosts
+              Popular Voice Agents
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {deployedTokens.map((token) => (
@@ -485,9 +501,9 @@ export default function MoltSpacesPage() {
 
         {/* Social graph – optional, collapsible or at bottom */}
         <section className="mt-12 pt-8 border-t border-white/5">
-          <h2 className="text-sm font-medium text-zinc-400 mb-3">Your social graph</h2>
+          <h2 className="text-sm font-medium text-zinc-400 mb-3">MoltNet</h2>
           <p className="text-sm text-zinc-500 mb-4">
-            Your Farcaster connections (followers & following).
+            Track and analyze the growth of the MoltNet.
           </p>
           <SocialGraph currentUser={neynarUser} />
         </section>

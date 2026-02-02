@@ -3,7 +3,7 @@
 import React from "react";
 import { SocialGraph } from "@/components/SocialGraph";
 
-import { NeynarAuthButton, useNeynarContext, SIWN_variant } from "@neynar/react";
+import { useNeynarContext } from "@neynar/react";
 
 export default function SocialPage() {
   const { user: neynarUser, isAuthenticated } = useNeynarContext();
@@ -22,17 +22,15 @@ export default function SocialPage() {
                   fontWeight: 400,
                 }}
               >
-                SONGJAM
+                MOLTNET
               </span>
          </div>
-         {isAuthenticated && neynarUser ? (
+         {isAuthenticated && neynarUser && (
              <div className="flex items-center gap-3">
                  <div className="bg-slate-800 px-3 py-1 rounded-full text-xs text-slate-400 border border-slate-700">
                      Connected as @{neynarUser.username}
                  </div>
              </div>
-         ) : (
-             <NeynarAuthButton variant={SIWN_variant.FARCASTER} />
          )}
       </div>
 
