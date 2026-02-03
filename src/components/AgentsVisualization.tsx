@@ -26,6 +26,7 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
 }) => {
     const fgRef = useRef<ForceGraphMethods>(undefined);
     const containerRef = useRef<HTMLDivElement>(null);
+    const initialZoomDone = useRef(false);
 
     const graphData = useMemo(() => {
         const nodes = agents.map((agent) => ({
@@ -87,6 +88,18 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
             fgRef.current.d3Force('charge')?.strength(-100);
             fgRef.current.d3Force('collide')?.radius(20);
         }
+    }, [graphData]);
+
+    // Start one zoom-out step so the graph loads slightly zoomed out
+    useEffect(() => {
+        if (graphData.nodes.length === 0 || initialZoomDone.current || !fgRef.current) return;
+        const t = setTimeout(() => {
+            if (!fgRef.current) return;
+            const current = fgRef.current.zoom();
+            fgRef.current.zoom(current / 1.5, 100);
+            initialZoomDone.current = true;
+        }, 150);
+        return () => clearTimeout(t);
     }, [graphData]);
 
     const handleZoomIn = () => {
