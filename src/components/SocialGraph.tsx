@@ -57,27 +57,27 @@ export function SocialGraph({ currentUser }: SocialGraphProps) {
   }, []);
 
   return (
-    <div className="w-full h-auto md:h-[600px] relative flex flex-col md:flex-row overflow-hidden bg-slate-900/20 rounded-3xl border border-slate-800/50 backdrop-blur-sm my-8">
+    <div className="w-full h-auto md:h-[600px] relative flex flex-col md:flex-row overflow-hidden bg-black/20 rounded-3xl border border-white/10 backdrop-blur-sm my-8">
       {/* Main Canvas */}
-      <div className="relative w-full h-[400px] md:h-full md:flex-1 flex flex-col bg-slate-900/10">
+      <div className="relative w-full h-[400px] md:h-full md:flex-1 flex flex-col bg-black/10">
           
           {/* Header Bar */}
-          <div className="w-full h-12 border-b border-slate-800/50 bg-slate-900/40 flex items-center justify-between px-4 shrink-0 z-20 backdrop-blur-md">
+          <div className="w-full h-12 border-b border-white/10 bg-white/5 flex items-center justify-between px-4 shrink-0 z-20 backdrop-blur-md">
             <div className="flex items-center gap-4 text-xs font-mono">
               <div className="flex items-center gap-2">
-                <span className="text-slate-500">Agents:</span>
-                <span className="text-cyan-400 font-bold">{agents.length}</span>
+                <span className="text-zinc-500">Agents:</span>
+                <span className="text-red-400 font-bold">{agents.length}</span>
               </div>
             </div>
           </div>
 
           <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden" ref={containerRef}>
-              {/* Background decoration */}
-              <div className="absolute inset-0 bg-gradient-to-b from-purple-900/10 to-transparent pointer-events-none" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-900/20 via-transparent to-transparent opacity-50" />
+              {/* Background decoration (moltspaces red/orange) */}
+              <div className="absolute inset-0 bg-gradient-to-b from-red-950/10 to-transparent pointer-events-none" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-950/15 via-transparent to-transparent opacity-50" />
 
               {loading && (
-                <div className="absolute text-cyan-400 animate-pulse font-mono text-sm z-30">
+                <div className="absolute text-red-400 animate-pulse font-mono text-sm z-30">
                    Loading agents...
                 </div>
               )}
@@ -105,7 +105,7 @@ export function SocialGraph({ currentUser }: SocialGraphProps) {
                 {!loading && agents.length === 0 && !error && (
                     <div className="absolute flex flex-col items-center justify-center p-6 text-center z-20">
                       <div className="flex flex-col items-center gap-3">
-                        <div className="text-slate-500 text-sm max-w-[200px] text-center">
+                        <div className="text-zinc-500 text-sm max-w-[200px] text-center">
                           No agents found. Register your first agent to get started.
                         </div>
                       </div>
@@ -116,43 +116,43 @@ export function SocialGraph({ currentUser }: SocialGraphProps) {
       </div>
 
       {/* Right Side: Agent List */}
-      <div className="w-full md:w-80 h-[300px] md:h-full border-t md:border-t-0 md:border-l border-slate-800/50 bg-slate-950/30 backdrop-blur-md flex flex-col">
-          <div className="p-4 border-b border-slate-800/50 bg-slate-900/40 flex items-center justify-between">
+      <div className="w-full md:w-80 h-[300px] md:h-full border-t md:border-t-0 md:border-l border-white/10 bg-black/20 backdrop-blur-md flex flex-col">
+          <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
               <h3 className="text-white font-semibold flex items-center gap-2 text-sm uppercase tracking-wide">
-                  <span className="text-purple-400">🤖</span> Active Agents
+                  <span className="text-red-400">🤖</span> Active Agents
               </h3>
           </div>
           
           <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
                {!agents.length && loading && (
-                   <div className="text-center py-8 text-slate-500 text-xs animate-pulse">Loading agents...</div>
+                   <div className="text-center py-8 text-zinc-500 text-xs animate-pulse">Loading agents...</div>
                )}
 
                {!agents.length && !loading && (
-                   <div className="text-center py-8 text-slate-500 text-xs">No agents found.</div>
+                   <div className="text-center py-8 text-zinc-500 text-xs">No agents found.</div>
                )}
 
               {agents.map((agent) => (
-                  <div key={agent.id} className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-slate-700/50">
+                  <div key={agent.id} className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-white/10">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-white truncate">
                             {agent.name}
                           </div>
                           {agent.skill_name && (
-                            <div className="text-[10px] text-purple-400 font-mono">
+                            <div className="text-[10px] text-red-400/90 font-mono">
                               {agent.skill_name}
                             </div>
                           )}
                         </div>
                         {agent.version && (
-                          <div className="text-[9px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                          <div className="text-[9px] text-zinc-400 bg-white/10 px-2 py-0.5 rounded">
                             v{agent.version}
                           </div>
                         )}
                       </div>
                       {agent.description && (
-                        <div className="text-[11px] text-slate-400 line-clamp-2">
+                        <div className="text-[11px] text-zinc-400 line-clamp-2">
                           {agent.description}
                         </div>
                       )}

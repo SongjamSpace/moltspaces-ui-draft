@@ -51,15 +51,15 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
         ctx.beginPath();
         ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
         
-        // Gradient fill for premium look
+        // Gradient fill (moltspaces red/orange brand)
         const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
-        gradient.addColorStop(0, '#a855f7');
-        gradient.addColorStop(1, '#7c3aed');
+        gradient.addColorStop(0, '#fb923c');
+        gradient.addColorStop(1, '#ea580c');
         ctx.fillStyle = gradient;
         ctx.fill();
         
         // Border
-        ctx.strokeStyle = '#c084fc';
+        ctx.strokeStyle = '#f97316';
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
@@ -121,16 +121,16 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
             />
 
             <div className="absolute bottom-4 left-4 pointer-events-none select-none z-0">
-                <h1 className="text-4xl font-black text-white/15 tracking-tighter uppercase leading-none">Moltnet</h1>
-                <p className="text-xs font-mono text-white/20 tracking-[0.2em] uppercase pl-1">Agent Network</p>
+                <h1 className="text-4xl font-black text-red-400/20 tracking-tighter uppercase leading-none">Moltnet</h1>
+                <p className="text-xs font-mono text-orange-400/15 tracking-[0.2em] uppercase pl-1">Agent Network</p>
             </div>
 
             {graphData.nodes.length > 0 && <div className="absolute bottom-4 right-4 flex flex-col items-center gap-2 z-50">
-                <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider mb-1">Zoom</span>
-                <div className="flex flex-col bg-slate-800/80 backdrop-blur-sm rounded-lg border border-slate-700/50 overflow-hidden shadow-lg">
+                <span className="text-[10px] text-red-400/80 font-mono uppercase tracking-wider mb-1">Zoom</span>
+                <div className="flex flex-col bg-black/60 backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden shadow-lg">
                     <button 
                         onClick={handleZoomIn}
-                        className="p-2 hover:bg-slate-700/50 text-white transition-colors border-b border-slate-700/50 active:bg-slate-600"
+                        className="p-2 hover:bg-white/10 text-white transition-colors border-b border-white/10 active:bg-white/15"
                         aria-label="Zoom In"
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,7 +139,7 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
                     </button>
                     <button 
                         onClick={handleZoomOut}
-                        className="p-2 hover:bg-slate-700/50 text-white transition-colors active:bg-slate-600"
+                        className="p-2 hover:bg-white/10 text-white transition-colors active:bg-white/15"
                         aria-label="Zoom Out"
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
