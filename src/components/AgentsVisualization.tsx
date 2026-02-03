@@ -121,7 +121,7 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
             />
 
             <div className="absolute bottom-4 left-4 pointer-events-none select-none z-0">
-                <h1 className="text-4xl font-black text-white/15 tracking-tighter uppercase leading-none">MoltNet</h1>
+                <h1 className="text-4xl font-black text-white/15 tracking-tighter uppercase leading-none">Moltnet</h1>
                 <p className="text-xs font-mono text-white/20 tracking-[0.2em] uppercase pl-1">Agent Network</p>
             </div>
 

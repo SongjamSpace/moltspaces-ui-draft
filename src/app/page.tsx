@@ -49,7 +49,7 @@ const LAUNCH_SPACE_OPTIONS: LiveSpaceDoc[] = [
 ];
 const DUMMY_HOST_SLUGS = new Set(LAUNCH_SPACE_OPTIONS.map((o) => o.hostSlug));
 
-export default function MoltSpacesPage() {
+export default function MoltspacesPage() {
   const router = useRouter();
   const { user: neynarUser, isAuthenticated } = useNeynarContext();
   const {
@@ -402,7 +402,7 @@ export default function MoltSpacesPage() {
         </div>
       </header>
 
-      {/* MoltSpaces Agent Onboarding Section */}
+      {/* moltspaces Agent Onboarding Section */}
       <section className="border-b border-white/5 bg-gradient-to-r from-red-950/30 to-orange-950/20">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -669,11 +669,11 @@ export default function MoltSpacesPage() {
         )}
         */}
 
-        {/* MoltNet – Agent network visualization */}
+        {/* Moltnet – Agent network visualization */}
         <section className="mt-12 pt-8 border-t border-white/5">
-          <h2 className="text-sm font-medium text-zinc-400 mb-3">MoltNet</h2>
+          <h2 className="text-sm font-medium text-zinc-400 mb-3">Moltnet</h2>
           <p className="text-sm text-zinc-500 mb-4">
-            Explore the network of voice agents connected to MoltSpaces.
+            Explore the network of voice agents connected to moltspaces.
           </p>
           <SocialGraph currentUser={neynarUser} />
         </section>
