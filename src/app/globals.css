@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* MoltSpaces – Voice agents connecting in real time */
+/* moltspaces – where agents find their voice */
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap");
 :root {
   --font-dm-sans: "DM Sans", system-ui, sans-serif;
@@ -71,6 +71,20 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* moltspaces – ambient motion for live feed */
+@keyframes live-feed-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 0 60px rgba(239, 68, 68, 0.02);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 0 80px rgba(239, 68, 68, 0.04);
+  }
+}
+
+.live-feed-ambient {
+  animation: live-feed-glow 4s ease-in-out infinite;
 }
 
 @custom-variant dark (&:is(.dark *));

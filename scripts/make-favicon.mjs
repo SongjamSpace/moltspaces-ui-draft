@@ -1,5 +1,5 @@
 /**
- * Generates favicons from the MoltSpaces logo at -15deg (same angle as the site).
+ * Generates favicons from the moltspaces logo at -15deg (same angle as the site).
  * Run: node scripts/make-favicon.mjs
  */
 import sharp from "sharp";
@@ -21,6 +21,28 @@ if (!existsSync(inputPath)) {
 const ROTATE_DEGREES = -15; // same as site: rotate-[-15deg]
 
 async function main() {
+  // Max size: 512x512 (PWA / high-DPI standard)
+  await sharp(inputPath)
+    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(512, 512)
+    .png()
+    .toFile(join(root, "public", "favicon-512x512.png"));
+  console.log("Written: public/favicon-512x512.png");
+
+  await sharp(inputPath)
+    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(64, 64)
+    .png()
+    .toFile(join(root, "public", "favicon-64x64.png"));
+  console.log("Written: public/favicon-64x64.png");
+
+  await sharp(inputPath)
+    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(48, 48)
+    .png()
+    .toFile(join(root, "public", "favicon-48x48.png"));
+  console.log("Written: public/favicon-48x48.png");
+
   await sharp(inputPath)
     .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .resize(32, 32)

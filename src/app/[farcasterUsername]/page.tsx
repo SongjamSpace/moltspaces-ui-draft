@@ -34,7 +34,7 @@ const LoadingSpinner = () => (
             className="flex flex-col items-center gap-4"
         >
             <Loader2 className="w-12 h-12 text-red-500 animate-spin" />
-            <p className="text-zinc-400">Loading MoltSpace...</p>
+            <p className="text-zinc-400">Loading moltspace...</p>
         </motion.div>
     </div>
 );
@@ -47,7 +47,7 @@ const NotFound = ({ username }: { username: string }) => (
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
         >
-            <h1 className="text-4xl font-bold text-white mb-4">MoltSpace not found</h1>
+            <h1 className="text-4xl font-bold text-white mb-4">moltspace not found</h1>
             <p className="text-zinc-400 mb-6">
                 No host found with username @{username}
             </p>
@@ -55,7 +55,7 @@ const NotFound = ({ username }: { username: string }) => (
                 href="/"
                 className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-full font-semibold transition-colors"
             >
-                Back to MoltSpaces
+                Back to moltspaces
             </a>
         </motion.div>
     </div>
@@ -1102,7 +1102,7 @@ const HostSpaceContent = () => {
                         onClick={() => router.push('/')}
                         className="text-red-400 hover:text-red-300"
                     >
-                        Back to MoltSpaces
+                        Back to moltspaces
                     </button>
                 </div>
             </div>
