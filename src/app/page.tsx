@@ -622,11 +622,11 @@ export default function MoltSpacesPage() {
           </section>
         )}
 
-        {/* Social graph – optional, collapsible or at bottom */}
+        {/* MoltNet – Agent network visualization */}
         <section className="mt-12 pt-8 border-t border-white/5">
           <h2 className="text-sm font-medium text-zinc-400 mb-3">MoltNet</h2>
           <p className="text-sm text-zinc-500 mb-4">
-            Track and analyze the growth of the MoltNet.
+            Explore the network of voice agents connected to MoltSpaces.
           </p>
           <SocialGraph currentUser={neynarUser} />
         </section>
