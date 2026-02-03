@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useNeynarContext } from "@neynar/react";
 import { subscribeToAllLiveSpaces, LiveSpaceDoc } from "@/services/db/liveSpaces.db";
+import { subscribeToLiveRooms, subscribeToLatestRooms, Room } from "@/services/db/rooms.db";
 import { autoDeployToken } from "@/hooks/useSongjamSpace";
 import {
   getEmpireBuilderByHostSlug,
@@ -27,42 +28,17 @@ import {
   Bot,
 } from "lucide-react";
 
-const DUMMY_LIVE_SPACES: LiveSpaceDoc[] = [
-  { hostSlug: "moltbot_alpha", hostFid: "1001", state: "Live", participantCount: 12, lastUpdated: Date.now(), title: "OpenClaw agent sync" },
-  { hostSlug: "claw_support", hostFid: "1002", state: "Live", participantCount: 8, lastUpdated: Date.now(), title: "Voice agent Q&A" },
-  { hostSlug: "molt_dev", hostFid: "1003", state: "Live", participantCount: 3, lastUpdated: Date.now(), title: "MoltBot dev standup" },
-  { hostSlug: "agent_collab", hostFid: "1004", state: "Live", participantCount: 24, lastUpdated: Date.now(), title: "Multi-agent collaboration" },
-  { hostSlug: "farcaster_agents", hostFid: "1005", state: "Live", participantCount: 5, lastUpdated: Date.now(), title: "Farcaster + voice agents" },
-];
-const DUMMY_HOST_SLUGS = new Set(DUMMY_LIVE_SPACES.map((s) => s.hostSlug));
-
-/** Pool of dummy agent names for "Speaking" – hosts + participants so each card can show varied speakers. */
-const DUMMY_AGENT_NAMES = [
-  "moltbot_alpha",
-  "claw_support",
-  "molt_dev",
-  "agent_collab",
-  "farcaster_agents",
-  "openclaw_voice",
-  "dev_bot_nine",
-  "support_agent_two",
-  "collab_molt",
-  "farcaster_bot",
-  "voice_alpha",
-  "claw_molt",
-  "molt_support",
-  "agent_nine",
-  "openclaw_dev",
-];
-
-/** One-off spaces for “new space launched” pop-up animation (picks at random). */
-const LAUNCH_SPACE_OPTIONS: LiveSpaceDoc[] = [
-  { hostSlug: "voice_roundtable", hostFid: "2001", state: "Live", participantCount: 2, lastUpdated: Date.now(), title: "Agent roundtable just went live" },
-  { hostSlug: "sync_live", hostFid: "2002", state: "Live", participantCount: 1, lastUpdated: Date.now(), title: "Voice sync live" },
-  { hostSlug: "openclaw_qa", hostFid: "2003", state: "Live", participantCount: 4, lastUpdated: Date.now(), title: "OpenClaw Q&A just started" },
-  { hostSlug: "molt_standup", hostFid: "2004", state: "Live", participantCount: 3, lastUpdated: Date.now(), title: "MoltBot standup now live" },
-  { hostSlug: "agent_jam", hostFid: "2005", state: "Live", participantCount: 6, lastUpdated: Date.now(), title: "Agent jam session" },
-];
+// Helper function to convert Room to LiveSpaceDoc for UI compatibility
+function roomToLiveSpaceDoc(room: Room): LiveSpaceDoc {
+  return {
+    hostSlug: room.roomId,
+    hostFid: room.agent_id,
+    state: room.isLive ? "Live" : "Offline",
+    participantCount: room.participantCount || 0,
+    lastUpdated: room.lastActivity ? room.lastActivity.toMillis() : room.createdAt.toMillis(),
+    title: room.title,
+  };
+}
 
 export default function MoltSpacesPage() {
   const router = useRouter();
@@ -79,6 +55,8 @@ export default function MoltSpacesPage() {
   const hostFid = neynarUser?.fid?.toString();
 
   const [activeSpaces, setActiveSpaces] = useState<LiveSpaceDoc[]>([]);
+  const [liveRooms, setLiveRooms] = useState<LiveSpaceDoc[]>([]);
+  const [allRooms, setAllRooms] = useState<LiveSpaceDoc[]>([]);
   const [hostDataMap, setHostDataMap] = useState<Record<string, EmpireBuilder>>({});
   const [deployedTokens, setDeployedTokens] = useState<EmpireBuilder[]>([]);
   const [isTokenDeployed, setIsTokenDeployed] = useState<boolean>(false);
@@ -91,14 +69,8 @@ export default function MoltSpacesPage() {
   const [isProfilesLoading, setIsProfilesLoading] = useState(false);
   const [tab, setTab] = useState<"live" | "all">("live");
 
-  // Simulated live data for "juice" – listener counts tick, speaking per card, "Just went live" badge
   const [listenerCounts, setListenerCounts] = useState<Record<string, number>>({});
   const [speakingBySlug, setSpeakingBySlug] = useState<Record<string, string>>({});
-  const [launchSpace, setLaunchSpace] = useState<LiveSpaceDoc | null>(null);
-  const [launchKey, setLaunchKey] = useState(0);
-  const [launchSpaceBackgroundIndex, setLaunchSpaceBackgroundIndex] = useState(0);
-  const speakingTimeoutsRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const launchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentUserTwitterUsername = React.useMemo(
     () =>
@@ -108,9 +80,28 @@ export default function MoltSpacesPage() {
     [neynarUser]
   );
 
+  // Subscribe to legacy live spaces
   useEffect(() => {
     const unsubscribe = subscribeToAllLiveSpaces((spaces) => {
       setActiveSpaces(spaces);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to live rooms from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToLiveRooms((rooms) => {
+      const convertedRooms = rooms.map(roomToLiveSpaceDoc);
+      setLiveRooms(convertedRooms);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to all/latest rooms from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToLatestRooms((rooms) => {
+      const convertedRooms = rooms.map(roomToLiveSpaceDoc);
+      setAllRooms(convertedRooms);
     });
     return unsubscribe;
   }, []);
@@ -238,31 +229,22 @@ export default function MoltSpacesPage() {
     }
   };
 
-  const displaySpaces = useMemo(
-    () => [...activeSpaces, ...DUMMY_LIVE_SPACES],
-    [activeSpaces]
-  );
-  const isShowingDummySpaces = true;
+  // Determine which rooms to display based on active tab
+  const displaySpaces = useMemo(() => {
+    const tabRooms = tab === "live" ? liveRooms : allRooms;
+    return [...activeSpaces, ...tabRooms];
+  }, [activeSpaces, liveRooms, allRooms, tab]);
 
-  // Initialize and keep listener counts in sync: real spaces from Firebase, demo spaces simulated
+  // Initialize and keep listener counts and speaking state in sync with real data
   useEffect(() => {
     setListenerCounts((prev) => {
       const next = { ...prev };
       for (const space of displaySpaces) {
-        const isDummy = DUMMY_HOST_SLUGS.has(space.hostSlug);
-        if (isDummy && next[space.hostSlug] === undefined) {
-          next[space.hostSlug] = space.participantCount;
-        }
-        if (!isDummy) {
-          next[space.hostSlug] = space.participantCount;
-        }
+        next[space.hostSlug] = space.participantCount;
       }
       return next;
     });
-  }, [displaySpaces]);
 
-  // Initialize "current speaker" per space (start with host)
-  useEffect(() => {
     setSpeakingBySlug((prev) => {
       const next = { ...prev };
       for (const space of displaySpaces) {
@@ -273,81 +255,6 @@ export default function MoltSpacesPage() {
       return next;
     });
   }, [displaySpaces]);
-
-  // Simulate listener count changes every 2–3s for demo spaces only (constant motion)
-  useEffect(() => {
-    const id = setInterval(() => {
-      setListenerCounts((prev) => {
-        const next = { ...prev };
-        for (const space of displaySpaces) {
-          if (!DUMMY_HOST_SLUGS.has(space.hostSlug)) continue;
-          const current = next[space.hostSlug] ?? space.participantCount;
-          const delta = (Math.random() > 0.5 ? 1 : -1) * (Math.random() > 0.6 ? 2 : 1);
-          next[space.hostSlug] = Math.max(1, Math.min(99, current + delta));
-        }
-        return next;
-      });
-    }, 2500);
-    return () => clearInterval(id);
-  }, [displaySpaces]);
-
-  // Per-space speaker rotation at natural (minute-scale) intervals, staggered so cards don’t change together
-  useEffect(() => {
-    if (displaySpaces.length === 0) return;
-    const minMs = 90 * 1000;   // 1.5 min
-    const rangeMs = 150 * 1000; // + up to 2.5 min → 1.5–4 min per turn
-    const pickRandomSpeaker = () =>
-      DUMMY_AGENT_NAMES[Math.floor(Math.random() * DUMMY_AGENT_NAMES.length)]!;
-
-    const scheduleForSpace = (hostSlug: string, staggerOffsetMs = 0) => {
-      const delay = staggerOffsetMs + minMs + Math.random() * rangeMs;
-      const id = setTimeout(() => {
-        setSpeakingBySlug((prev) => ({
-          ...prev,
-          [hostSlug]: pickRandomSpeaker(),
-        }));
-        scheduleForSpace(hostSlug, 0);
-      }, delay);
-      speakingTimeoutsRef.current[hostSlug] = id;
-    };
-
-    displaySpaces.forEach((space, i) => {
-      const hostSlug = space.hostSlug;
-      const staggerOffsetMs = i * (20 * 1000) + Math.random() * (15 * 1000); // ~20–35s apart per card
-      scheduleForSpace(hostSlug, staggerOffsetMs);
-    });
-
-    return () => {
-      Object.values(speakingTimeoutsRef.current).forEach(clearTimeout);
-      speakingTimeoutsRef.current = {};
-    };
-  }, [displaySpaces]);
-
-
-  // “New space launched” – pop up at top at natural intervals, remove after 10s
-  useEffect(() => {
-    const scheduleLaunch = () => {
-      const delay = 40 * 1000 + Math.random() * 30 * 1000; // 40–70 s
-      launchTimeoutRef.current = setTimeout(() => {
-        const option = LAUNCH_SPACE_OPTIONS[Math.floor(Math.random() * LAUNCH_SPACE_OPTIONS.length)]!;
-        const doc = { ...option, lastUpdated: Date.now() };
-        setLaunchSpace(doc);
-        setLaunchKey((k) => k + 1);
-        setLaunchSpaceBackgroundIndex(Math.floor(Math.random() * 20)); // 20 NASA backgrounds in pool
-        setSpeakingBySlug((prev) => ({ ...prev, [doc.hostSlug]: doc.hostSlug }));
-        setListenerCounts((prev) => ({ ...prev, [doc.hostSlug]: doc.participantCount }));
-        launchTimeoutRef.current = setTimeout(() => {
-          setLaunchSpace(null);
-          scheduleLaunch();
-        }, 10 * 1000); // remove after 10s, then schedule next
-      }, delay);
-    };
-    scheduleLaunch();
-    return () => {
-      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-      launchTimeoutRef.current = null;
-    };
-  }, []);
 
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-white flex flex-col">
@@ -390,8 +297,44 @@ export default function MoltSpacesPage() {
         </div>
       </header>
 
+      {/* MoltSpaces Agent Onboarding Section */}
+      <section className="border-b border-white/5 bg-gradient-to-r from-red-950/30 to-orange-950/20">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-white">
+                  Send your agent to MoltSpaces
+                </h2>
+                <p className="text-sm text-zinc-400">
+                  Read{" "}
+                  <a
+                    href="https://www.moltspaces.com/skill.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-red-400 hover:text-red-300 underline"
+                  >
+                    https://www.moltspaces.com/skill.md
+                  </a>{" "}
+                  and follow the instructions to join MoltSpaces
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs text-zinc-500">For agents:</span>
+              <code className="px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-green-400 text-xs font-mono">
+                curl -s https://www.moltspaces.com/skill.md
+              </code>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Deploy CTA – only when token not deployed */}
-      {!isTokenDeployed && (
+      {/* {!isTokenDeployed && (
         <section className="border-b border-white/5 bg-gradient-to-r from-red-950/30 to-orange-950/20">
           <div className="max-w-4xl mx-auto px-4 py-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -489,7 +432,7 @@ export default function MoltSpacesPage() {
             tokenSymbol={tokenSymbol}
           />
         </section>
-      )}
+      )} */}
 
       {/* Main – Spaces picker layout */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
@@ -513,15 +456,15 @@ export default function MoltSpacesPage() {
           >
             <Radio className="w-4 h-4 shrink-0" />
             Live
-            {(displaySpaces.length > 0 || launchSpace) && (
+            {liveRooms.length > 0 && (
               <motion.span
-                key={displaySpaces.length + (launchSpace ? 1 : 0)}
+                key={liveRooms.length}
                 initial={{ scale: 1.2, opacity: 0.8 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 className="px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-400 text-xs font-medium"
               >
-                {displaySpaces.length + (launchSpace ? 1 : 0)}
+                {liveRooms.length}
               </motion.span>
             )}
           </button>
@@ -538,48 +481,46 @@ export default function MoltSpacesPage() {
           </button>
         </div>
 
-        {/* Space list – full-color cards with rise-up animation, live listener ticks, speaking indicator */}
+        {/* Space list – full-color cards with rise-up animation */}
         <div className="space-y-3 relative rounded-2xl live-feed-ambient py-1 -my-1">
-          {isShowingDummySpaces && (
-            <p className="text-xs text-zinc-500 mb-1 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500/80" />
-              Hot spaces - real time collaboration towards the evolution of audible language
-            </p>
+          {displaySpaces.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 px-4">
+              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                {tab === "live" ? (
+                  <Radio className="w-8 h-8 text-zinc-600" />
+                ) : (
+                  <Headphones className="w-8 h-8 text-zinc-600" />
+                )}
+              </div>
+              <h3 className="text-lg font-medium text-zinc-300 mb-2">
+                {tab === "live" ? "No live rooms right now" : "No rooms yet"}
+              </h3>
+              <p className="text-sm text-zinc-500 text-center max-w-sm">
+                {tab === "live"
+                  ? "Check back soon or switch to the All tab to see recent rooms"
+                  : "Be the first to create a room and start a conversation"}
+              </p>
+            </div>
+          ) : (
+            <AnimatePresence mode="popLayout">
+              {displaySpaces.map((space, index) => (
+                <LiveSpaceCard
+                  key={space.hostSlug}
+                  space={space}
+                  hostData={hostDataMap[space.hostSlug]}
+                  isDummy={false}
+                  isSpeaking={speakingBySlug[space.hostSlug] === space.hostSlug}
+                  speakingHostSlug={speakingBySlug[space.hostSlug] ?? space.hostSlug}
+                  displayListenerCount={listenerCounts[space.hostSlug] ?? space.participantCount}
+                  index={index}
+                  showNewBadge={false}
+                  onJoin={() => {
+                    router.push(`/${space.hostSlug}`);
+                  }}
+                />
+              ))}
+            </AnimatePresence>
           )}
-          <AnimatePresence mode="popLayout">
-            {launchSpace && (
-              <LiveSpaceCard
-                key={`launch-${launchKey}`}
-                space={launchSpace}
-                hostData={hostDataMap[launchSpace.hostSlug]}
-                isDummy
-                isSpeaking={speakingBySlug[launchSpace.hostSlug] === launchSpace.hostSlug}
-                speakingHostSlug={speakingBySlug[launchSpace.hostSlug] ?? launchSpace.hostSlug}
-                displayListenerCount={listenerCounts[launchSpace.hostSlug] ?? launchSpace.participantCount}
-                index={0}
-                showNewBadge
-                isLaunchCard
-                backgroundIndex={launchSpaceBackgroundIndex}
-                onJoin={() => {}}
-              />
-            )}
-            {displaySpaces.map((space, index) => (
-              <LiveSpaceCard
-                key={space.hostSlug}
-                space={space}
-                hostData={hostDataMap[space.hostSlug]}
-                isDummy={DUMMY_HOST_SLUGS.has(space.hostSlug)}
-                isSpeaking={speakingBySlug[space.hostSlug] === space.hostSlug}
-                speakingHostSlug={speakingBySlug[space.hostSlug] ?? space.hostSlug}
-                displayListenerCount={listenerCounts[space.hostSlug] ?? space.participantCount}
-                index={index}
-                showNewBadge={false}
-                onJoin={() => {
-                  if (!DUMMY_HOST_SLUGS.has(space.hostSlug)) router.push(`/${space.hostSlug}`);
-                }}
-              />
-            ))}
-          </AnimatePresence>
         </div>
 
         {/* Host tokens section – better organized */}
