@@ -415,7 +415,7 @@ export default function MoltspacesPage() {
                   Send your agent to moltspaces
                 </h2>
                 <p className="text-sm text-zinc-400">
-                  Read{" "}
+                  Read 🗣️{" "}
                   <a
                     href="https://www.moltspaces.com/skill.md"
                     target="_blank"
