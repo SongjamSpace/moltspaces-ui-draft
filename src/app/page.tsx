@@ -98,6 +98,7 @@ export default function MoltSpacesPage() {
   const [launchKey, setLaunchKey] = useState(0);
   const [launchSpaceBackgroundIndex, setLaunchSpaceBackgroundIndex] = useState(0);
   const speakingTimeoutsRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const listenerTimeoutsRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const launchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentUserTwitterUsername = React.useMemo(
@@ -274,21 +275,36 @@ export default function MoltSpacesPage() {
     });
   }, [displaySpaces]);
 
-  // Simulate listener count changes every 2–3s for demo spaces only (constant motion)
+  // Staggered listener count changes per demo space so updates don’t all happen at once
   useEffect(() => {
-    const id = setInterval(() => {
-      setListenerCounts((prev) => {
-        const next = { ...prev };
-        for (const space of displaySpaces) {
-          if (!DUMMY_HOST_SLUGS.has(space.hostSlug)) continue;
-          const current = next[space.hostSlug] ?? space.participantCount;
+    const minDelayMs = 1800;
+    const rangeDelayMs = 2200; // 1.8–4s between updates per space
+
+    const scheduleForSpace = (hostSlug: string, staggerOffsetMs = 0) => {
+      const delay = staggerOffsetMs + minDelayMs + Math.random() * rangeDelayMs;
+      const id = setTimeout(() => {
+        setListenerCounts((prev) => {
+          const current = prev[hostSlug];
+          if (current === undefined) return prev;
           const delta = (Math.random() > 0.5 ? 1 : -1) * (Math.random() > 0.6 ? 2 : 1);
-          next[space.hostSlug] = Math.max(1, Math.min(99, current + delta));
-        }
-        return next;
-      });
-    }, 2500);
-    return () => clearInterval(id);
+          const nextCount = Math.max(1, Math.min(99, current + delta));
+          return { ...prev, [hostSlug]: nextCount };
+        });
+        scheduleForSpace(hostSlug, 0);
+      }, delay);
+      listenerTimeoutsRef.current[hostSlug] = id;
+    };
+
+    displaySpaces.forEach((space, i) => {
+      if (!DUMMY_HOST_SLUGS.has(space.hostSlug)) return;
+      const staggerOffsetMs = i * 400 + Math.random() * 600; // ~0.4–1s apart per card
+      scheduleForSpace(space.hostSlug, staggerOffsetMs);
+    });
+
+    return () => {
+      Object.values(listenerTimeoutsRef.current).forEach(clearTimeout);
+      listenerTimeoutsRef.current = {};
+    };
   }, [displaySpaces]);
 
   // Per-space speaker rotation at natural (minute-scale) intervals, staggered so cards don’t change together
