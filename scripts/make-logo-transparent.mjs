@@ -1,5 +1,5 @@
 /**
- * Makes black background transparent in the MoltSpaces logo.
+ * Makes black background transparent in the moltspaces logo.
  * Run: node scripts/make-logo-transparent.mjs
  */
 import sharp from "sharp";

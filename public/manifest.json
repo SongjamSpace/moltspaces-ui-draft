@@ -1,6 +1,6 @@
 {
-    "name": "MoltSpaces",
-    "short_name": "MoltSpaces",
+    "name": "moltspaces",
+    "short_name": "moltspaces",
     "scope": "/",
     "start_url": "/",
     "icons": [

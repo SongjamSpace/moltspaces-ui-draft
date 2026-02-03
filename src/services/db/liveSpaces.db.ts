@@ -23,6 +23,8 @@ export interface LiveSpaceDoc {
     participantCount: number;
     lastUpdated: number;
     title?: string;
+    /** Optional background image URL when the agent selects an image at launch. In production: validate URL (HTTPS, image MIME), optionally proxy or re-host to avoid CORS and broken links. */
+    backgroundImageUrl?: string;
     // Music playback state
     musicPlaying?: boolean;     // Whether music is currently playing
     musicTrackName?: string;    // Daily.co custom track name for music

@@ -1,5 +1,5 @@
 /**
- * Generates favicons from the MoltSpaces logo at -15deg (same angle as the site).
+ * Generates favicons from the moltspaces logo at -15deg (same angle as the site).
  * Run: node scripts/make-favicon.mjs
  */
 import sharp from "sharp";
@@ -19,44 +19,44 @@ if (!existsSync(inputPath)) {
 }
 
 const ROTATE_DEGREES = -15; // same as site: rotate-[-15deg]
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
+
+// Rotate, trim transparent edges, then resize to fit inside size×size so the icon fills the canvas
+function pipeline(size) {
+  return sharp(inputPath)
+    .rotate(ROTATE_DEGREES, { background: TRANSPARENT })
+    .trim({ threshold: 1 })
+    .resize(size, size, { fit: "contain", background: TRANSPARENT })
+    .png();
+}
 
 async function main() {
-  await sharp(inputPath)
-    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .resize(32, 32)
-    .png()
-    .toFile(join(root, "public", "favicon-32x32.png"));
+  // Max size: 512x512 (PWA / high-DPI standard)
+  await pipeline(512).toFile(join(root, "public", "favicon-512x512.png"));
+  console.log("Written: public/favicon-512x512.png");
+
+  await pipeline(64).toFile(join(root, "public", "favicon-64x64.png"));
+  console.log("Written: public/favicon-64x64.png");
+
+  await pipeline(48).toFile(join(root, "public", "favicon-48x48.png"));
+  console.log("Written: public/favicon-48x48.png");
+
+  await pipeline(32).toFile(join(root, "public", "favicon-32x32.png"));
   console.log("Written: public/favicon-32x32.png");
 
-  await sharp(inputPath)
-    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .resize(16, 16)
-    .png()
-    .toFile(join(root, "public", "favicon-16x16.png"));
+  await pipeline(16).toFile(join(root, "public", "favicon-16x16.png"));
   console.log("Written: public/favicon-16x16.png");
 
-  await sharp(inputPath)
-    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .resize(180, 180)
-    .png()
-    .toFile(join(root, "public", "apple-touch-icon.png"));
+  await pipeline(180).toFile(join(root, "public", "apple-touch-icon.png"));
   console.log("Written: public/apple-touch-icon.png");
 
-  await sharp(inputPath)
-    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .resize(192, 192)
-    .png()
-    .toFile(join(root, "public", "android-chrome-192x192.png"));
+  await pipeline(192).toFile(join(root, "public", "android-chrome-192x192.png"));
   console.log("Written: public/android-chrome-192x192.png");
 
-  await sharp(inputPath)
-    .rotate(ROTATE_DEGREES, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .resize(512, 512)
-    .png()
-    .toFile(join(root, "public", "android-chrome-512x512.png"));
+  await pipeline(512).toFile(join(root, "public", "android-chrome-512x512.png"));
   console.log("Written: public/android-chrome-512x512.png");
 
-  console.log("Done. Favicons use logo at -15deg like the site.");
+  console.log("Done. Favicons: logo trimmed and fitted at -15deg (icon fills canvas).");
 }
 
 main().catch((err) => {
