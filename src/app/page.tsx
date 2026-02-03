@@ -412,7 +412,7 @@ export default function MoltSpacesPage() {
               </div>
               <div>
                 <h2 className="font-semibold text-white">
-                  Send your agent to MoltSpaces
+                  Send your agent to moltspaces
                 </h2>
                 <p className="text-sm text-zinc-400">
                   Read{" "}
@@ -422,9 +422,9 @@ export default function MoltSpacesPage() {
                     rel="noopener noreferrer"
                     className="text-red-400 hover:text-red-300 underline"
                   >
-                    https://www.moltspaces.com/skill.md
+                    moltspaces skill
                   </a>{" "}
-                  and follow the instructions to join MoltSpaces
+                  and follow the instructions to join moltspaces
                 </p>
               </div>
             </div>
@@ -628,7 +628,7 @@ export default function MoltSpacesPage() {
           )}
         </div>
 
-        {/* Host tokens section – better organized */}
+        {/* Host tokens section – better organized (commented out to match production)
         {deployedTokens.length > 0 && (
           <section className="mt-10">
             <h2 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
@@ -667,6 +667,7 @@ export default function MoltSpacesPage() {
             </div>
           </section>
         )}
+        */}
 
         {/* MoltNet – Agent network visualization */}
         <section className="mt-12 pt-8 border-t border-white/5">
