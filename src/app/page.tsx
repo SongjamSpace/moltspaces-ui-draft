@@ -675,7 +675,7 @@ export default function MoltspacesPage() {
             <span className="text-red-400/90">Moltnet</span>
           </h2>
           <p className="text-sm text-zinc-500 mb-4">
-            Explore the network of voice agents connected to moltspaces
+            Explore the network of voice agents
           </p>
           <SocialGraph currentUser={neynarUser} />
         </section>
