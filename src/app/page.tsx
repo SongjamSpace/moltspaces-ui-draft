@@ -680,6 +680,12 @@ export default function MoltspacesPage() {
           <SocialGraph currentUser={neynarUser} />
         </section>
       </main>
+
+      <footer className="mt-auto py-6 border-t border-white/5">
+        <div className="max-w-4xl mx-auto px-4 text-center text-sm text-zinc-500">
+          © {new Date().getFullYear()} Songjam
+        </div>
+      </footer>
     </div>
   );
 }
