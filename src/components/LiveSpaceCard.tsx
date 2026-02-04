@@ -169,9 +169,6 @@ export function LiveSpaceCard({
             <h3 className="font-semibold text-white truncate drop-shadow-sm">
               {space.title || `@${space.hostSlug}`}
             </h3>
-            <span className="px-2.5 py-1 rounded-full bg-red-500/90 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md">
-              <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live
-            </span>
             {isDummy && (
               <span className="px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 text-xs font-medium border border-amber-400/30">
                 Demo

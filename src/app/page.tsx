@@ -35,7 +35,7 @@ function roomToLiveSpaceDoc(room: Room): LiveSpaceDoc {
     hostFid: room.agent_id,
     state: room.isLive ? "Live" : "Offline",
     participantCount: room.participantCount || 0,
-    lastUpdated: room.lastActivity ? room.lastActivity.toMillis() : room.createdAt.toMillis(),
+    lastUpdated: room.createdAt.toMillis(),
     title: room.title,
   };
 }

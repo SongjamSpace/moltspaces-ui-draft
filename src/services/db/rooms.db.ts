@@ -20,7 +20,6 @@ export interface Room {
     createdAt: Timestamp;
     participantCount?: number;
     isLive?: boolean;
-    lastActivity?: Timestamp;
 }
 
 const ROOMS_COLLECTION = 'rooms';
@@ -62,7 +61,7 @@ export async function queryLatestRooms(): Promise<Room[]> {
         const roomsRef = collection(db, ROOMS_COLLECTION);
         const q = query(
             roomsRef,
-            orderBy('lastActivity', 'desc'),
+            orderBy('createdAt', 'desc'),
             limit(20)
         );
 
@@ -125,7 +124,7 @@ export function subscribeToLatestRooms(
     const roomsRef = collection(db, ROOMS_COLLECTION);
     const q = query(
         roomsRef,
-        orderBy('lastActivity', 'desc'),
+        orderBy('createdAt', 'desc'),
         limit(20)
     );
 
