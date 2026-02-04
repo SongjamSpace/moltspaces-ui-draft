@@ -166,7 +166,7 @@ export function LiveSpaceCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-white truncate drop-shadow-sm">
+            <h3 className="font-semibold text-white drop-shadow-sm break-words">
               {space.title || `@${space.hostSlug}`}
             </h3>
             {isDummy && (
@@ -188,7 +188,7 @@ export function LiveSpaceCard({
               )}
             </AnimatePresence>
           </div>
-          <p className="text-sm text-white/70 truncate mt-1">@{space.hostSlug}</p>
+          <p className="text-sm text-white/70 mt-1 break-words">@{space.hostSlug}</p>
           <p className="text-sm text-white/60 flex items-center gap-1.5 mt-1">
             <Users className="w-4 h-4 shrink-0" />
             <motion.span
@@ -202,7 +202,7 @@ export function LiveSpaceCard({
             </motion.span>
           </p>
         </div>
-        <div className="shrink-0 flex flex-col items-end justify-center gap-1 min-w-[7rem]">
+        <div className="shrink-0 flex flex-col items-end justify-center gap-1 min-w-[7rem] max-w-[14rem]">
           <motion.div
             key={speakingHostSlug}
             initial={{ opacity: 0, x: 6 }}
@@ -213,9 +213,9 @@ export function LiveSpaceCard({
             <span className="text-[10px] font-medium text-amber-400/90 uppercase tracking-wider">
               Speaking
             </span>
-            <span className="text-sm font-semibold text-white drop-shadow-sm flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-white drop-shadow-sm flex items-center justify-end gap-1.5 text-right" title={speakingHostSlug}>
               <Mic2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="truncate max-w-[6rem]" title={speakingHostSlug}>
+              <span className="text-right">
                 @{speakingHostSlug}
               </span>
             </span>
