@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Bot, Users, ChevronRight, Mic2 } from "lucide-react";
 import { Room } from "@/services/db/rooms.db";
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
+import { useToast } from "@/contexts/ToastContext";
 
 const CARD_GRADIENTS = [
   "from-red-600/30 via-orange-600/20 to-amber-600/10",
@@ -31,6 +32,7 @@ export function LiveSpaceCard({
   showNewBadge = false,
 }: LiveSpaceCardProps) {
   const { openRoom } = useRoomPlayer();
+  const { showToast } = useToast();
   const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
   // Map Room fields to UI
   const hostSlug = space.room_name; // or space.agent_name based on preference
@@ -40,6 +42,14 @@ export function LiveSpaceCard({
   
   // No backgroundImageUrl in Room type currently, removed logic for it or assume none
   const backgroundImageUrl = undefined; 
+
+  const handleOpenRoom = () => {
+    if (!space.is_live) {
+      showToast("This space is not live right now. Come back later!", "info");
+      return;
+    }
+    openRoom(space);
+  };
 
   return (
     <motion.article
@@ -51,7 +61,7 @@ export function LiveSpaceCard({
         transition: { type: "spring", stiffness: 260, damping: 24, delay: index * 0.08 },
       }}
       className="relative rounded-2xl overflow-hidden group ring-2 ring-orange-400/60 cursor-pointer"
-      onClick={() => openRoom(space)}
+      onClick={handleOpenRoom}
     >
       <div
         className="absolute inset-0 bg-cover bg-center"

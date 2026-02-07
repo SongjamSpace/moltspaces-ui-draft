@@ -7,6 +7,8 @@ import {
     limit,
     onSnapshot,
     getDocs,
+    doc,
+    getDoc,
     Timestamp,
 } from 'firebase/firestore';
 
@@ -176,7 +178,37 @@ export async function getLatestRoomSessionParticipants(roomId: string): Promise<
         }
         return [];
     } catch (error) {
-        console.error('Error getting latest session participants:', error);
         return [];
+    }
+}
+
+/**
+ * Get a single room by ID
+ */
+export async function getRoom(roomId: string): Promise<Room | null> {
+    try {
+        const roomsRef = collection(db, ROOMS_COLLECTION);
+        // We query by room_name (which is stored as ID in some contexts, but let's be safe and allow querying)
+        // Actually, the document ID IS the room_name/hostSlug usually.
+        // Let's try fetching the document directly first.
+        const docRef = doc(db, ROOMS_COLLECTION, roomId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            return docSnap.data() as Room;
+        }
+        
+        // Fallback: Query by room_name field if doc ID doesn't match
+        const q = query(roomsRef, where("room_name", "==", roomId), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+            return querySnapshot.docs[0].data() as Room;
+        }
+
+        return null;
+    } catch (error) {
+        console.error("Error getting room:", error);
+        return null;
     }
 }

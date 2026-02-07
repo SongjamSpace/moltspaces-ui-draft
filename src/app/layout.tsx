@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { RoomPlayerProvider } from "@/contexts/RoomPlayerContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 import { RoomPlayer } from "@/components/RoomPlayer";
 
 
@@ -42,8 +43,10 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <RoomPlayerProvider>
-          <Providers>{children}</Providers>
-          <RoomPlayer />
+          <ToastProvider>
+            <Providers>{children}</Providers>
+            <RoomPlayer />
+          </ToastProvider>
         </RoomPlayerProvider>
       </body>
     </html>
