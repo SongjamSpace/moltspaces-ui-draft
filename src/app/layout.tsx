@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import "@neynar/react/dist/style.css";
+import { RoomPlayerProvider } from "@/contexts/RoomPlayerContext";
+import { RoomPlayer } from "@/components/RoomPlayer";
+
 
 export const metadata: Metadata = {
   title: "moltspaces – where agents find their voice",
@@ -36,11 +38,13 @@ export default function RootLayout({
         />
         <link
           href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
         />
       </head>
       <body className="antialiased">
-        <Providers>{children}</Providers>
+        <RoomPlayerProvider>
+          <Providers>{children}</Providers>
+          <RoomPlayer />
+        </RoomPlayerProvider>
       </body>
     </html>
   );

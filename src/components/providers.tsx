@@ -1,14 +1,12 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { NeynarContextProvider, Theme } from "@neynar/react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { base } from "viem/chains";
 
 import { auth } from "@/services/firebase.service";
 import { onAuthStateChanged, TwitterAuthProvider, signInWithPopup, User } from "firebase/auth";
-import { createOrUpdateFarcasterUser } from "@/services/db/farcasterUsers.db";
 
 interface AuthContextType {
   user: User | null;
@@ -112,52 +110,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       }}
     >
-      <NeynarContextProvider
-        settings={{
-          clientId: process.env.NEXT_PUBLIC_NEYNAR_CLIENT_ID || "",
-          defaultTheme: Theme.Dark,
-          eventsCallbacks: {
-            onAuthSuccess: async (params) => {
-              console.log("Neynar auth success", params);
-              
-              // Store Farcaster user data in Firestore
-              if (params?.user) {
-                try {
-                  const user = params.user as typeof params.user & {
-                    verified_accounts?: Array<{
-                      platform: 'x' | 'instagram' | 'tiktok' | string;
-                      username: string;
-                    }>;
-                  };
-                  
-                  await createOrUpdateFarcasterUser({
-                    fid: user.fid,
-                    username: user.username,
-                    display_name: user.display_name,
-                    pfp_url: user.pfp_url,
-                    custody_address: user.custody_address,
-                    follower_count: user.follower_count,
-                    following_count: user.following_count,
-                    verifications: user.verifications,
-                    verified_accounts: user.verified_accounts,
-                  });
-                  console.log("Farcaster user data stored successfully");
-                } catch (error) {
-                  // Log error but don't block login flow
-                  console.error("Failed to store Farcaster user data:", error);
-                }
-              }
-            },
-            onSignout: () => {
-              console.log("Neynar signout");
-            },
-          },
-        }}
-      >
-        <AuthProvider>
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-        </AuthProvider>
-      </NeynarContextProvider>
+      <AuthProvider>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </AuthProvider>
     </PrivyProvider>
   );
 }

@@ -1,10 +1,8 @@
-"use client";
-
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, Users, ChevronRight, Mic2 } from "lucide-react";
-import type { LiveSpaceDoc } from "@/services/db/liveSpaces.db";
-import type { EmpireBuilder } from "@/services/db/empireBuilder.db";
+import { Room } from "@/services/db/rooms.db";
+import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 
 const CARD_GRADIENTS = [
   "from-red-600/30 via-orange-600/20 to-amber-600/10",
@@ -19,116 +17,42 @@ function getDummyAvatarUrl(hostSlug: string, size = 128): string {
   return `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(hostSlug)}&size=${size}`;
 }
 
-/**
- * Card backgrounds for demo spaces – NASA public domain imagery (U.S. Government Works).
- * Large pool so launch cards and demo cards get variety; same image is less likely to repeat.
- */
-const DEMO_CARD_BACKGROUNDS: string[] = [
-  "https://images-assets.nasa.gov/image/PIA14417/PIA14417~medium.jpg",
-  "https://images-assets.nasa.gov/image/GSFC_20171208_Archive_e001465/GSFC_20171208_Archive_e001465~orig.jpg",
-  "https://images-assets.nasa.gov/image/PIA04216/PIA04216~orig.jpg",
-  "https://images-assets.nasa.gov/image/PIA04220/PIA04220~orig.jpg",
-  "https://images-assets.nasa.gov/image/PIA04225/PIA04225~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA12110/PIA12110~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA09178/PIA09178~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA13124/PIA13124~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA08646/PIA08646~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA12348/PIA12348~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA04224/PIA04224~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA03238/PIA03238~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA07997/PIA07997~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA10236/PIA10236~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA0311/PIA0311~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA12011/PIA12011~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA13804/PIA13804~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA16474/PIA16474~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA18332/PIA18332~medium.jpg",
-  "https://images-assets.nasa.gov/image/PIA18848/PIA18848~medium.jpg",
-];
-
 export interface LiveSpaceCardProps {
-  space: LiveSpaceDoc;
-  hostData?: EmpireBuilder | null;
-  isDummy: boolean;
-  isSpeaking: boolean;
-  /** Host slug of the agent currently speaking (shown on every card). */
-  speakingHostSlug: string;
-  displayListenerCount: number;
+  space: Room;
+  displayListenerCount?: number;
   index: number;
   showNewBadge?: boolean;
-  /** When true, use “new space launched” entrance (pop up, rise) and support exit animation. */
-  isLaunchCard?: boolean;
-  /** Override background for this card (e.g. random index for launch so pop-up doesn't repeat). */
-  backgroundIndex?: number;
-  onJoin: () => void;
 }
 
 export function LiveSpaceCard({
   space,
-  hostData,
-  isDummy,
-  isSpeaking,
-  speakingHostSlug,
   displayListenerCount,
   index,
   showNewBadge = false,
-  isLaunchCard = false,
-  backgroundIndex,
-  onJoin,
 }: LiveSpaceCardProps) {
+  const { openRoom } = useRoomPlayer();
   const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
-  const avatarUrl = hostData?.imageUrl ?? (isDummy ? getDummyAvatarUrl(space.hostSlug) : null);
-  // Agent-selected background: space.backgroundImageUrl when agents set a URL at launch. Else host image, else demo pool.
-  const customBg = space.backgroundImageUrl;
-  const poolIndex =
-    backgroundIndex !== undefined
-      ? backgroundIndex % DEMO_CARD_BACKGROUNDS.length
-      : index % DEMO_CARD_BACKGROUNDS.length;
-  const backgroundImageUrl =
-    hostData?.imageUrl ?? customBg ?? (isDummy ? DEMO_CARD_BACKGROUNDS[poolIndex] : null);
+  // Map Room fields to UI
+  const hostSlug = space.room_name; // or space.agent_name based on preference
+  const avatarUrl = getDummyAvatarUrl(hostSlug);
+  const title = space.title;
+  const listenerCount = displayListenerCount !== undefined ? displayListenerCount : (space.participant_count || 0);
+  
+  // No backgroundImageUrl in Room type currently, removed logic for it or assume none
+  const backgroundImageUrl = undefined; 
 
   return (
     <motion.article
-      layout={!isLaunchCard}
-      initial={
-        isLaunchCard
-          ? { opacity: 0, y: 72, scale: 0.9 }
-          : { opacity: 0, y: 48, scale: 0.94 }
-      }
+      initial={{ opacity: 0, y: 48, scale: 0.94 }}
       animate={{
         opacity: 1,
         y: 0,
         scale: 1,
-        transition: isLaunchCard
-          ? { type: "spring", stiffness: 320, damping: 28 }
-          : { type: "spring", stiffness: 260, damping: 24, delay: index * 0.08 },
+        transition: { type: "spring", stiffness: 260, damping: 24, delay: index * 0.08 },
       }}
-      exit={
-        isLaunchCard
-          ? { opacity: 0, y: -24, scale: 0.96, transition: { duration: 0.3 } }
-          : undefined
-      }
-      className={`relative rounded-2xl overflow-hidden group ring-2 ring-orange-400/60 ${
-        isDummy ? "cursor-default opacity-95" : "cursor-pointer"
-      } ${isLaunchCard ? "ring-orange-400/80 shadow-[0_0_24px_rgba(251,146,60,0.3)]" : ""}`}
-      onClick={onJoin}
+      className="relative rounded-2xl overflow-hidden group ring-2 ring-orange-400/60 cursor-pointer"
+      onClick={() => openRoom(space)}
     >
-      {/* Speaking glow – animated border and soft shadow */}
-      {isSpeaking && (
-        <motion.div
-          className="absolute inset-0 rounded-2xl pointer-events-none z-10"
-          initial={false}
-          animate={{
-            boxShadow: [
-              "inset 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 24px rgba(239, 68, 68, 0.25)",
-              "inset 0 0 0 2px rgba(239, 68, 68, 0.6), 0 0 32px rgba(239, 68, 68, 0.35)",
-              "inset 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 24px rgba(239, 68, 68, 0.25)",
-            ],
-            transition: { duration: 1.8, repeat: Infinity, ease: "easeInOut" },
-          }}
-        />
-      )}
-
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{
@@ -144,17 +68,13 @@ export function LiveSpaceCard({
       {!backgroundImageUrl && (
         <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
       )}
-      <div
-        className={`absolute inset-0 border rounded-2xl transition-colors ${
-          isSpeaking ? "border-red-400/60" : "border-white/20 group-hover:border-red-400/40"
-        }`}
-      />
+      <div className="absolute inset-0 border rounded-2xl transition-colors border-white/20 group-hover:border-red-400/40" />
       <div className="relative flex items-center gap-4 p-5">
         <div className="relative shrink-0">
           {avatarUrl ? (
             <img
               src={avatarUrl}
-              alt={space.hostSlug}
+              alt={hostSlug}
               className="w-16 h-16 rounded-full object-cover border-2 border-white/30 shadow-lg ring-2 ring-red-500/30 group-hover:ring-red-400/50 transition-all"
             />
           ) : (
@@ -167,13 +87,8 @@ export function LiveSpaceCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-white drop-shadow-sm break-words">
-              {space.title || `@${space.hostSlug}`}
+              {title || `@${hostSlug}`}
             </h3>
-            {isDummy && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 text-xs font-medium border border-amber-400/30">
-                Demo
-              </span>
-            )}
             <AnimatePresence>
               {showNewBadge && (
                 <motion.span
@@ -188,43 +103,19 @@ export function LiveSpaceCard({
               )}
             </AnimatePresence>
           </div>
-          <p className="text-sm text-white/70 mt-1 break-words">@{space.hostSlug}</p>
+          <p className="text-sm text-white/70 mt-1 break-words">@{hostSlug}</p>
           <p className="text-sm text-white/60 flex items-center gap-1.5 mt-1">
             <Users className="w-4 h-4 shrink-0" />
-            <motion.span
-              key={displayListenerCount}
-              initial={{ scale: 1.15, color: "rgba(255,255,255,0.9)" }}
-              animate={{ scale: 1, color: "rgba(255,255,255,0.6)" }}
-              transition={{ duration: 0.25 }}
-            >
-              {displayListenerCount}{" "}
-              {displayListenerCount === 1 ? "listener" : "listeners"}
-            </motion.span>
+            <span>
+              {listenerCount}{" "}
+              {listenerCount === 1 ? "listener" : "listeners"}
+            </span>
           </p>
         </div>
-        <div className="shrink-0 flex flex-col items-end justify-center gap-1 min-w-[7rem] max-w-[14rem]">
-          <motion.div
-            key={speakingHostSlug}
-            initial={{ opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.25 }}
-            className="flex flex-col items-end gap-0.5"
-          >
-            <span className="text-[10px] font-medium text-amber-400/90 uppercase tracking-wider">
-              Speaking
-            </span>
-            <span className="text-sm font-semibold text-white drop-shadow-sm flex items-center justify-end gap-1.5 text-right" title={speakingHostSlug}>
-              <Mic2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="text-right">
-                @{speakingHostSlug}
-              </span>
-            </span>
-          </motion.div>
-          {!isDummy && (
+        <div className="shrink-0 flex flex-col items-end justify-center gap-1 min-w-[3rem]">
             <span className="flex items-center justify-center w-11 h-11 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 text-white group-hover:bg-red-500 group-hover:border-red-400 transition-all shadow-lg mt-1.5">
               <ChevronRight className="w-6 h-6" />
             </span>
-          )}
         </div>
       </div>
     </motion.article>

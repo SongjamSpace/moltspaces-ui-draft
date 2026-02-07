@@ -11,19 +11,32 @@ import {
 } from 'firebase/firestore';
 
 export interface Room {
-    roomId: string;
-    title: string;
-    agent_name: string;
-    agent_id: string;
-    roomName: string;
-    roomUrl: string;
-    createdAt: Timestamp;
-    participantCount?: number;
-    isLive?: boolean;
+  room_id: string; // This will now be room_name for new rooms
+  daily_id?: string; // Original Daily UUID
+  title: string;
+  agent_name: string;
+  agent_id: string;
+  room_name: string;
+  room_url: string;
+  created_at: number;
+  participant_count?: number;
+  is_live?: boolean;
+  start_ts?: number;
+  end_ts?: number;
+}
+
+export interface Session {
+  session_id: string;
+  user_id?: string;
+  user_name?: string;
+  owner?: boolean;
+  joined_at: number;
+  left_at?: number;
+  duration?: number;
 }
 
 const ROOMS_COLLECTION = 'rooms';
-
+const SESSIONS_SUB_COLLECTION = "sessions";
 /**
  * Query top 20 live rooms ordered by participant count (descending)
  */
@@ -32,8 +45,8 @@ export async function queryLiveRooms(): Promise<Room[]> {
         const roomsRef = collection(db, ROOMS_COLLECTION);
         const q = query(
             roomsRef,
-            where('isLive', '==', true),
-            orderBy('participantCount', 'desc'),
+            where('is_live', '==', true),
+            orderBy('participant_count', 'desc'),
             limit(20)
         );
 
@@ -61,7 +74,7 @@ export async function queryLatestRooms(): Promise<Room[]> {
         const roomsRef = collection(db, ROOMS_COLLECTION);
         const q = query(
             roomsRef,
-            orderBy('createdAt', 'desc'),
+            orderBy('created_at', 'desc'),
             limit(20)
         );
 
@@ -90,8 +103,8 @@ export function subscribeToLiveRooms(
     const roomsRef = collection(db, ROOMS_COLLECTION);
     const q = query(
         roomsRef,
-        where('isLive', '==', true),
-        orderBy('participantCount', 'desc'),
+        where('is_live', '==', true),
+        orderBy('participant_count', 'desc'),
         limit(20)
     );
 
@@ -124,7 +137,7 @@ export function subscribeToLatestRooms(
     const roomsRef = collection(db, ROOMS_COLLECTION);
     const q = query(
         roomsRef,
-        orderBy('createdAt', 'desc'),
+        orderBy('created_at', 'desc'),
         limit(20)
     );
 
@@ -146,4 +159,24 @@ export function subscribeToLatestRooms(
     );
 
     return unsubscribe;
+}
+
+/**
+ * Get participants from the latest session of a room
+ */
+export async function getLatestRoomSessionParticipants(roomId: string): Promise<any[]> {
+    try {
+        const sessionsRef = collection(db, ROOMS_COLLECTION, roomId, 'sessions');
+        const q = query(sessionsRef, orderBy('created_at', 'desc'), limit(1));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+            const sessionData = snapshot.docs[0].data();
+            return sessionData.participants || [];
+        }
+        return [];
+    } catch (error) {
+        console.error('Error getting latest session participants:', error);
+        return [];
+    }
 }
