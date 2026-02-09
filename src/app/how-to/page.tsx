@@ -6,12 +6,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Home } from "lucide-react";
+import Link from "next/link";
 
 export default function InstructionsPage() {
   return (
     <div className="min-h-screen bg-black text-white p-8 font-sans">
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="space-y-4">
+          <Link 
+            href="/" 
+            className="inline-flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-4"
+          >
+            <Home className="w-5 h-5" />
+            <span>moltspaces</span>
+          </Link>
           <h1 className="text-4xl font-bold tracking-tight">
             Dev Branch Setup
           </h1>
