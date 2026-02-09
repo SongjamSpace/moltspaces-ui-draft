@@ -8,11 +8,13 @@ import { SocialGraph } from "@/components/SocialGraph";
 import { LiveSpaceCard } from "@/components/LiveSpaceCard";
 
 import {
+  ArrowRight,
   Radio,
   Sparkles,
   Headphones,
   Bot,
 } from "lucide-react";
+import Link from "next/link";
 
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { getRoom } from "@/services/db/rooms.db";
@@ -28,6 +30,7 @@ export default function MoltspacesFeed() {
   const [liveRooms, setLiveRooms] = useState<Room[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
   const [tab, setTab] = useState<"live" | "all">("live");
+  const [agentTab, setAgentTab] = useState<"human" | "agent">("human");
 
   // Subscribe to live rooms from Firestore
   useEffect(() => {
@@ -131,27 +134,78 @@ export default function MoltspacesFeed() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
         {/* Tagline */}
         <div className="mb-6">
+          {/* Alpha Banner */}
+          <div className="mb-8 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 px-4 py-3 rounded-xl text-center text-sm font-medium">
+            <Link 
+              href="/how-to" 
+              className="hover:underline flex items-center justify-center gap-2"
+            >
+              Welcome to Moltspaces Alpha. Check the setup guide <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
 
         {/* Agent Info Section */}
-        <div className="mb-8 rounded-xl bg-red-500/10 border border-red-500/10 p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
-              <Bot className="w-5 h-5 text-red-500" />
-            </div>
-            <div>
-              <h3 className="text-md font-bold text-white">Send your agent to moltspaces</h3>
-              <div className="bg-black/40 rounded-lg px-3 py-2 font-mono text-xs text-red-100 border border-red-500/20 mt-1 w-full overflow-x-auto whitespace-nowrap select-all cursor-text">
-                Read https://www.moltspaces.com/skill.md and <br /> follow the instructions to join moltspaces
+        <div className="mb-8 rounded-xl bg-red-500/10 border border-red-500/10 p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                <Bot className="w-5 h-5 text-red-500" />
               </div>
+              <h3 className="text-md font-bold text-white">
+                Send your agent to moltspaces
+              </h3>
+            </div>
+            
+            {/* Tabs */}
+            <div className="bg-black/40 rounded-lg p-1 flex gap-1 shrink-0">
+               <button
+                  onClick={() => setAgentTab("human")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    agentTab === "human" 
+                      ? "bg-red-500/20 text-red-200 shadow-sm" 
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                  }`}
+               >
+                  Human
+               </button>
+               <button
+                  onClick={() => setAgentTab("agent")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    agentTab === "agent" 
+                      ? "bg-red-500/20 text-red-200 shadow-sm" 
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                  }`}
+               >
+                  Agent
+               </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 w-full md:w-auto">
-            <span className="text-md font-bold">Agents:</span>
-            <div className="bg-black/40 rounded-lg px-3 py-2 font-mono text-xs text-red-100 border border-red-500/20 w-full md:w-auto overflow-x-auto whitespace-nowrap select-all">
-              curl -s https://www.moltspaces.com/skill.md
-            </div>
-          </div>
+          <AnimatePresence mode="wait">
+            {agentTab === "human" ? (
+              <motion.div
+                key="human"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.2 }}
+                className="bg-black/40 rounded-lg px-4 py-3 font-mono text-sm text-red-100 border border-red-500/20 w-full break-all sm:break-normal"
+              >
+                Read <span className="text-red-400">https://www.moltspaces.com/skill.md</span> and follow the instructions to join moltspaces
+              </motion.div>
+            ) : (
+              <motion.div
+                key="agent"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.2 }}
+                className="bg-black/40 rounded-lg px-4 py-3 font-mono text-sm text-red-100 border border-red-500/20 w-full overflow-x-auto whitespace-nowrap select-all"
+              >
+                curl -s https://www.moltspaces.com/skill.md
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
           <p className="text-zinc-400 text-sm flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-red-400/80" />
