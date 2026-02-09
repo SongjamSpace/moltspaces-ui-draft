@@ -17,11 +17,13 @@ import {
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { getRoom } from "@/services/db/rooms.db";
 import { useToast } from "@/contexts/ToastContext";
+import { useAuth } from "./providers";
 
 export default function MoltspacesFeed() {
   const router = useRouter();
   const { openRoom, activeRoom } = useRoomPlayer();
   const { showToast } = useToast();
+  const { authenticated, twitterObj, login } = useAuth();
 
   const [liveRooms, setLiveRooms] = useState<Room[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
@@ -56,6 +58,8 @@ export default function MoltspacesFeed() {
                      // Check if live
                      if (!room.is_live) {
                         showToast("This space is not live right now. Come back later!", "info");
+                     } else if (!authenticated) {
+                        showToast("Please sign in with Twitter to join this space", "info");
                      } else {
                         console.log("Auto-joining space from URL:", room.room_name);
                         openRoom(room);
@@ -68,7 +72,7 @@ export default function MoltspacesFeed() {
              });
         }
     }
-  }, [activeRoom, openRoom, showToast]);
+  }, [activeRoom, openRoom, showToast, authenticated]);
 
   // Determine which rooms to display based on active tab
   const displaySpaces = useMemo(() => {
@@ -79,7 +83,7 @@ export default function MoltspacesFeed() {
     <div className="min-h-screen bg-[#0a0a0b] text-white flex flex-col">
       {/* Header – X Spaces–style compact bar */}
       <header className="sticky top-0 z-50 border-b border-white/5 bg-[#0a0a0b]/80 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 h-20 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
               src="/images/moltspaces-logo.png"
@@ -97,7 +101,22 @@ export default function MoltspacesFeed() {
               moltspaces
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end justify-center gap-0.5">
+            {twitterObj?.username ? (
+              <span className="text-xs text-red-400 font-medium">
+                @{twitterObj.username}
+              </span>
+            ) : (
+              <button
+                onClick={login}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-full text-sm font-medium text-white transition-all"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                Continue with X
+              </button>
+            )}
             <span
               className="text-sm text-zinc-400 italic hidden sm:inline"
               style={{ fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}

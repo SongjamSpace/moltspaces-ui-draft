@@ -6,6 +6,7 @@ import { X, Mic, MicOff, LogOut, Users, Info, ChevronDown, ChevronUp, MessageSqu
 import DailyIframe, { DailyCall } from "@daily-co/daily-js";
 import { getLatestRoomSessionParticipants, Room } from "@/services/db/rooms.db";
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
+import { useAuth } from "./providers";
 
 interface Participant {
   user_id: string;
@@ -18,6 +19,7 @@ interface Participant {
 
 export function RoomPlayer() {
   const { activeRoom, isMinimized, closeRoom, minimizeRoom, maximizeRoom } = useRoomPlayer();
+  const { twitterObj } = useAuth();
   const [callObject, setCallObject] = useState<DailyCall | null>(null);
   const [participants, setParticipants] = useState<Record<string, Participant>>({});
   const [sessionParticipants, setSessionParticipants] = useState<any[]>([]); // From DB
@@ -51,9 +53,10 @@ export function RoomPlayer() {
       });
 
       try {
-        // Generate random guest user
-        const guestId = `user_${Math.floor(Math.random() * 10000)}`;
-        const guestName = `Guest ${Math.floor(Math.random() * 1000)}`;
+        // Use Twitter username if authenticated, otherwise generate random guest name
+        const displayName = twitterObj?.username 
+          ? `${twitterObj.username}` 
+          : `Guest ${Math.floor(Math.random() * 1000)}`;
 
         // 1. Get Token
         const tokenRes = await fetch("/api/daily/token", {
@@ -61,8 +64,7 @@ export function RoomPlayer() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             roomName: roomSlug,
-            userId: guestId,
-            username: guestName,
+            username: displayName,
           }),
         });
 

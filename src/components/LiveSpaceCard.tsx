@@ -4,6 +4,7 @@ import { Bot, Users, ChevronRight, Mic2 } from "lucide-react";
 import { Room } from "@/services/db/rooms.db";
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useAuth } from "./providers";
 
 const CARD_GRADIENTS = [
   "from-red-600/30 via-orange-600/20 to-amber-600/10",
@@ -33,6 +34,7 @@ export function LiveSpaceCard({
 }: LiveSpaceCardProps) {
   const { openRoom } = useRoomPlayer();
   const { showToast } = useToast();
+  const { authenticated, login } = useAuth();
   const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
   // Map Room fields to UI
   const hostSlug = space.room_name; // or space.agent_name based on preference
@@ -43,10 +45,18 @@ export function LiveSpaceCard({
   // No backgroundImageUrl in Room type currently, removed logic for it or assume none
   const backgroundImageUrl = undefined; 
 
-  const handleOpenRoom = () => {
+  const handleOpenRoom = async () => {
     if (!space.is_live) {
       showToast("This space is not live right now. Come back later!", "info");
       return;
+    }
+    if (!authenticated) {
+      try {
+        await login();
+      } catch (error) {
+        showToast("Please sign in with X to join", "info");
+        return;
+      }
     }
     openRoom(space);
   };

@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { roomName } = await request.json();
+    const { roomName, username } = await request.json();
 
     if (!roomName) {
       return NextResponse.json(
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     // See: https://docs.daily.co/reference/rest-api/meeting-tokens/create-meeting-token
     const tokenOptions: any = {
       properties: {
-        user_name: 'Listener',
+        user_name: username || 'Listener',
         is_owner: false,
         start_audio_off: true,
         start_video_off: true,

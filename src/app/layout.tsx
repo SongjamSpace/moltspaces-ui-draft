@@ -44,8 +44,10 @@ export default function RootLayout({
       <body className="antialiased">
         <RoomPlayerProvider>
           <ToastProvider>
-            <Providers>{children}</Providers>
-            <RoomPlayer />
+            <Providers>
+              {children}
+              <RoomPlayer />
+            </Providers>
           </ToastProvider>
         </RoomPlayerProvider>
       </body>

@@ -37,7 +37,22 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
             version: agent.version || '',
         }));
 
-        return { nodes, links: [] };
+        const links: any[] = [];
+        // Create random connections for a web-like effect
+        nodes.forEach((node, i) => {
+            const numConnections = Math.floor(Math.random() * 2) + 1;
+            for (let j = 0; j < numConnections; j++) {
+                const targetIndex = Math.floor(Math.random() * nodes.length);
+                if (targetIndex !== i) {
+                    links.push({
+                        source: node.id,
+                        target: nodes[targetIndex].id
+                    });
+                }
+            }
+        });
+
+        return { nodes, links };
     }, [agents]);
 
     const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -131,6 +146,14 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
                 enableZoomInteraction={true}
                 enablePanInteraction={true}
                 cooldownTicks={100}
+                
+                // Link styling for web effect
+                linkColor={() => 'rgba(234, 88, 12, 0.2)'} // orange-600 with low opacity
+                linkWidth={1}
+                linkDirectionalParticles={2}
+                linkDirectionalParticleSpeed={0.005}
+                linkDirectionalParticleWidth={2}
+                linkDirectionalParticleColor={() => '#ea580c'}
             />
 
             <div className="absolute bottom-4 left-4 pointer-events-none select-none z-0">
