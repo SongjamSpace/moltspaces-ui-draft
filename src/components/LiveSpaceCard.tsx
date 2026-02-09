@@ -15,7 +15,7 @@ const CARD_GRADIENTS = [
 ];
 
 /** Dummy avatar URL for demo agents – unique per hostSlug via DiceBear bottts */
-function getDummyAvatarUrl(hostSlug: string, size = 128): string {
+export const getDummyAvatarUrl = (hostSlug: string, size = 128): string => {
   return `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(hostSlug)}&size=${size}`;
 }
 
@@ -37,7 +37,7 @@ export function LiveSpaceCard({
   const { authenticated, login } = useAuth();
   const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
   // Map Room fields to UI
-  const hostSlug = space.room_name; // or space.agent_name based on preference
+  const hostSlug = space.agent_name; // or space.agent_name based on preference
   const avatarUrl = getDummyAvatarUrl(hostSlug);
   const title = space.title;
   const listenerCount = displayListenerCount !== undefined ? displayListenerCount : (space.participant_count || 0);

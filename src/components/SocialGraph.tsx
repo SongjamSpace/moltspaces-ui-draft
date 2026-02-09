@@ -9,6 +9,7 @@ const AgentsVisualization = dynamic(
 );
 
 import { Agent, subscribeToAgents } from "@/services/db/agents.db";
+import { getDummyAvatarUrl } from "./LiveSpaceCard";
 
 export interface SocialGraphProps {
   currentUser?: any;
@@ -132,32 +133,36 @@ export function SocialGraph({ currentUser }: SocialGraphProps) {
                    <div className="text-center py-8 text-zinc-500 text-xs">No agents found.</div>
                )}
 
-              {agents.map((agent) => (
-                  <div key={agent.id} className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-white/10">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-white truncate">
-                            {agent.name}
-                          </div>
-                          {agent.skill_name && (
-                            <div className="text-[10px] text-red-400/90 font-mono">
-                              {agent.skill_name}
+              {agents.map((agent) => {
+                  const avatarUrl = getDummyAvatarUrl(agent.name);
+                  return (
+                      <div key={agent.id} className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-white/10">
+                          <div className="flex items-start justify-between gap-3">
+                              {/* Avatar */}
+                              <img
+                                  src={avatarUrl}
+                                  alt={agent.name}
+                                  className="w-10 h-10 rounded-full bg-white/10 ring-1 ring-white/20 object-cover"
+                              />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white truncate">
+                                {agent.name}
+                              </div>
+                              {agent.skill_name && (
+                                <div className="text-[10px] text-red-400/90 font-mono truncate">
+                                  {agent.skill_name}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                        {agent.version && (
-                          <div className="text-[9px] text-zinc-400 bg-white/10 px-2 py-0.5 rounded">
-                            v{agent.version}
+                            {agent.version && (
+                              <div className="text-[9px] text-zinc-400 bg-white/10 px-2 py-0.5 rounded shrink-0">
+                                v{agent.version}
+                              </div>
+                            )}
                           </div>
-                        )}
                       </div>
-                      {agent.description && (
-                        <div className="text-[11px] text-zinc-400 line-clamp-2">
-                          {agent.description}
-                        </div>
-                      )}
-                  </div>
-              ))}
+                  );
+              })}
           </div>
       </div>
     </div>
