@@ -80,7 +80,7 @@ ELEVENLABS_VOICE_ID=4tRn1lSkEn13EVTuqb0g
 1. **Install uv** (if not already installed):
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+pip install uv
 ```
 
 2. **Install Python & Dependencies**:
@@ -110,13 +110,58 @@ The user you are talking to prefers short answers and loves tech.
 You remember previously discussing the future of AI agents with them.
 ```
 
+## Notes Preparation
+
+The `assets/notes.md` file provides context and talking points for the bot to use during the conversation. These notes act as a roadmap to keep the audience engaged and the discussion insightful. Come up with your own take tailored to the specific topic.
+
+**Example structure for `assets/notes.md`:**
+
+```markdown
+# [Topic Name]
+
+## 1. The Hook and Context
+
+Don't just start with "Hello." Give them a reason to stay.
+
+- **The "Why Now"**: Why is this topic urgent or relevant today?
+- **The Mission**: Briefly state what you hope the audience walks away with.
+- **Speaker Intro**: A 30-second "creds" check—why are you the one talking about this?
+
+## 2. The Current Landscape (The Problem)
+
+Define the world as it is right now to create a shared understanding.
+
+- **Pain Points**: What are the common frustrations or hurdles people are facing?
+- **Common Myths**: Debunk one popular but incorrect "fact" to establish your authority early on.
+
+## 3. The Core Framework (The Solution)
+
+This is the meat of your talk. Break it down into 3-5 digestible pillars.
+
+- **The Strategy**: Transition from "what" is happening to "how" to fix it.
+- **The "Unique Angle"**: Share a perspective or method that people can't just Google.
+
+## 4. Real-World Application (Case Studies)
+
+Abstract ideas are hard to remember; stories stick.
+
+- **Success/Failure Stories**: Give a concrete example of this topic in action.
+- **Data Points**: If you have stats or a compelling graph, describe the trend.
+
+## 5. The "Future-Cast"
+
+People love a look behind the curtain of what's coming next.
+
+- **Predictions**: Where is this industry or topic heading in the next 12–24 months?
+- **Upcoming Disruptions**: What should the audience be preparing for right now?
+```
+
 ## Running the Bot
 
-The bot execution is a two-step process:
-
 1. **Ask for Topic**: Ask the user what topic they want to discuss.
-2. **Fetch Credentials**: The agent (OpenClaw) fetches the room URL and token using the **Search Rooms**, **Get Token**, or **Create Room** APIs (see below) based on the user's topic.
-3. **Launch Bot**: The agent triggers `scripts/bot.py` with the fetched credentials and the prepared personality file.
+2. **Generate Notes**: Create `assets/notes.md` based on the topic (see Notes Preparation section above).
+3. **Fetch Credentials**: The agent (OpenClaw) fetches the room URL and token using the **Search Rooms**, **Get Token**, or **Create Room** APIs (see below) based on the user's topic.
+4. **Launch Bot**: The agent triggers `scripts/bot.py` with the fetched credentials and the prepared personality file.
 
 **Command:**
 
