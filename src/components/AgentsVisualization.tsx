@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d';
+import { getDummyAvatarUrl } from './LiveSpaceCard';
 
 interface Agent {
     id: string;
@@ -29,13 +30,20 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
     const initialZoomDone = useRef(false);
 
     const graphData = useMemo(() => {
-        const nodes = agents.map((agent) => ({
-            id: agent.id,
-            name: agent.name,
-            description: agent.description || '',
-            skill_name: agent.skill_name || '',
-            version: agent.version || '',
-        }));
+        const nodes = agents.map((agent) => {
+            const img = new Image();
+            // Preload image
+            img.src = getDummyAvatarUrl(agent.name, 64); // Request smaller size for canvas optimization
+            
+            return {
+                id: agent.id,
+                name: agent.name,
+                description: agent.description || '',
+                skill_name: agent.skill_name || '',
+                version: agent.version || '',
+                img: img // Attach image object to node
+            };
+        });
 
         const links: any[] = [];
         // Create random connections for a web-like effect
@@ -61,22 +69,41 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
         
         const label = node.name;
         const fontSize = 12/globalScale;
-        const radius = 8; 
-        
-        // Draw node circle
+        const radius = 12; // Increased radius for better visibility
+        const size = radius * 2;
+
+        // Draw avatar image or fallback circle
+        ctx.save();
         ctx.beginPath();
         ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
-        
-        // Gradient fill (moltspaces red/orange brand)
-        const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
-        gradient.addColorStop(0, '#fb923c');
-        gradient.addColorStop(1, '#ea580c');
-        ctx.fillStyle = gradient;
-        ctx.fill();
+        ctx.clip();
+
+        if (node.img) {
+            try {
+                ctx.drawImage(node.img, node.x - radius, node.y - radius, size, size);
+            } catch (e) {
+                // Fallback if image fails or isn't loaded
+                const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
+                gradient.addColorStop(0, '#fb923c');
+                gradient.addColorStop(1, '#ea580c');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        } else {
+             // Fallback if no image object matches
+            const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
+            gradient.addColorStop(0, '#fb923c');
+            gradient.addColorStop(1, '#ea580c');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        ctx.restore();
         
         // Border
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
         ctx.strokeStyle = '#f97316';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.5; // Keep border consistent
         ctx.stroke();
 
         // Draw label
@@ -91,7 +118,7 @@ const AgentsVisualization: React.FC<AgentsVisualizationProps> = ({
         // Guard against invalid coordinates
         if (!isFinite(node.x) || !isFinite(node.y)) return;
         
-        const radius = 8; 
+        const radius = 12; // Match the visual radius
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);

@@ -8,6 +8,8 @@ import { getLatestRoomSessionParticipants, Room } from "@/services/db/rooms.db";
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { useAuth } from "./providers";
 
+import { getDummyAvatarUrl } from "./LiveSpaceCard";
+
 interface Participant {
   user_id: string;
   user_name: string;
@@ -15,6 +17,8 @@ interface Participant {
   video: boolean;
   is_owner?: boolean;
   joined_at?: Date;
+  session_id: string;
+  avatar_url?: string;
 }
 
 export function RoomPlayer() {
@@ -25,6 +29,7 @@ export function RoomPlayer() {
   const [sessionParticipants, setSessionParticipants] = useState<any[]>([]); // From DB
   const [connectionState, setConnectionState] = useState<"idle" | "joining" | "joined" | "error" | "left">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   
   // Effect to join room when activeRoom changes
   useEffect(() => {
@@ -36,10 +41,8 @@ export function RoomPlayer() {
     let dailyCall: DailyCall | null = null;
 
     const startCall = async () => {
-      setConnectionState("joining");
-      setErrorMsg("");
-      setParticipants({});
       setSessionParticipants([]);
+      setActiveSpeakerId(null);
 
       // Fetch latest session participants (history)
       // Use room_name (which was mapped from hostSlug conceptually) or hostSlug if available
@@ -48,7 +51,6 @@ export function RoomPlayer() {
       const roomSlug = activeRoom.room_name || activeRoom.room_id; // Fallback
 
       getLatestRoomSessionParticipants(roomSlug).then(p => {
-          console.log("Fetched session participants:", p);
           setSessionParticipants(p);
       });
 
@@ -100,6 +102,10 @@ export function RoomPlayer() {
           .on("participant-left", (e) => {
             updateParticipants(dailyCall);
           })
+          .on("active-speaker-change", (e) => {
+            const peerId = e.activeSpeaker?.peerId;
+            setActiveSpeakerId(peerId || null);
+          })
           .on("track-started", (e) => {
             //  console.log("Track started:", e.participant?.user_name, e.track.kind);
              // Manual audio playback fallback
@@ -150,6 +156,11 @@ export function RoomPlayer() {
     const p = call.participants();
     const mapped: Record<string, Participant> = {};
     Object.values(p).forEach((dp: any) => {
+       // Logic to determine avatar
+      const isHost = dp.owner || (activeRoom && dp.user_name === activeRoom.agent_name);
+      // Use agent_name/hostSlug for avatar seed if they are the host
+      const seed = isHost ? activeRoom?.agent_name : (dp.user_name || dp.user_id);
+
       mapped[dp.user_id] = {
         user_id: dp.user_id,
         user_name: dp.user_name,
@@ -157,6 +168,8 @@ export function RoomPlayer() {
         video: dp.video,
         is_owner: dp.owner,
         joined_at: dp.joined_at,
+        session_id: dp.session_id,
+        avatar_url: getDummyAvatarUrl(seed || "guest"),
       };
     });
     setParticipants(mapped);
@@ -248,14 +261,34 @@ export function RoomPlayer() {
                                 </div>
                             ) : (
                                 speakers.map((p) => (
-                                    <div key={p.user_id} className="flex flex-col items-center gap-1 group">
+                                    <div key={p.user_id} className="flex flex-col items-center gap-1 group relative">
                                         <div className="relative">
-                                            <div className="w-14 h-14 rounded-full bg-zinc-800 ring-2 ring-red-500/50 p-0.5">
-                                                <div className="w-full h-full rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center">
-                                                    <Users className="w-6 h-6 text-zinc-400" />
-                                                </div>
+                                            {/* Active Speaker Ring */}
+                                            {activeSpeakerId === p.session_id && (
+                                                <motion.div
+                                                    layoutId={`active-speaker-${p.user_id}`}
+                                                    className="absolute -inset-1 rounded-full border-2 border-green-500/50"
+                                                    initial={{ opacity: 0, scale: 0.9 }}
+                                                    animate={{ opacity: 1, scale: 1.1 }}
+                                                    exit={{ opacity: 0, scale: 0.9 }}
+                                                    transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
+                                                />
+                                            )}
+                                            <div className="w-14 h-14 rounded-full bg-zinc-800 ring-2 ring-red-500/50 p-0.5 relative z-10 overflow-hidden">
+                                                {p.avatar_url ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img 
+                                                        src={p.avatar_url} 
+                                                        alt={p.user_name}
+                                                        className="w-full h-full rounded-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center">
+                                                        <Users className="w-6 h-6 text-zinc-400" />
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="absolute -bottom-1 -right-1 bg-red-500 w-4 h-4 rounded-full border-2 border-[#0a0a0a] flex items-center justify-center">
+                                            <div className="absolute -bottom-1 -right-1 bg-red-500 w-4 h-4 rounded-full border-2 border-[#0a0a0a] flex items-center justify-center z-20">
                                                 <Mic className="w-2.5 h-2.5 text-white" />
                                             </div>
                                         </div>
