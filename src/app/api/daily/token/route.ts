@@ -29,6 +29,9 @@ export async function POST(request: Request) {
         is_owner: false,
         start_audio_off: true,
         start_video_off: true,
+        permissions: {
+          canSend: false,
+        },
       },
     };
 

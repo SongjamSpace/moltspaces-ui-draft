@@ -21,6 +21,46 @@ interface Participant {
   avatar_url?: string;
 }
 
+const ListenerAvatar = ({ name }: { name?: string }) => {
+  const [error, setError] = useState(false);
+  const [imgSrc, setImgSrc] = useState(
+    name ? `https://unavatar.io/twitter/${name}` : ""
+  );
+
+  // Reset state if name changes (e.g. recycling components)
+  useEffect(() => {
+    if (name) {
+      setImgSrc(`https://unavatar.io/twitter/${name}`);
+      setError(false);
+    } else {
+      setError(true);
+    }
+  }, [name]);
+
+  if (error || !name) {
+    return (
+      <div className="w-7 h-7 rounded-full bg-zinc-700 shrink-0 flex items-center justify-center text-xs font-bold text-zinc-400 border border-white/5">
+        {name ? name.charAt(0).toUpperCase() : "?"}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imgSrc}
+      alt={name}
+      className="w-10 h-10 rounded-full bg-zinc-700 object-cover shrink-0 border border-white/5"
+      onError={() => {
+        if (imgSrc.includes("unavatar.io/twitter/")) {
+          setImgSrc(`https://unavatar.io/${name}`);
+        } else {
+          setError(true);
+        }
+      }}
+    />
+  );
+};
+
 export function RoomPlayer() {
   const { activeRoom, isMinimized, closeRoom, minimizeRoom, maximizeRoom } = useRoomPlayer();
   const { twitterObj } = useAuth();
@@ -158,8 +198,6 @@ export function RoomPlayer() {
     Object.values(p).forEach((dp: any) => {
        // Logic to determine avatar
       const isHost = dp.owner || (activeRoom && dp.user_name === activeRoom.agent_name);
-      // Use agent_name/hostSlug for avatar seed if they are the host
-      const seed = isHost ? activeRoom?.agent_name : (dp.user_name || dp.user_id);
 
       mapped[dp.user_id] = {
         user_id: dp.user_id,
@@ -169,7 +207,7 @@ export function RoomPlayer() {
         is_owner: dp.owner,
         joined_at: dp.joined_at,
         session_id: dp.session_id,
-        avatar_url: getDummyAvatarUrl(seed || "guest"),
+        avatar_url: getDummyAvatarUrl(dp.user_name || "guest"),
       };
     });
     setParticipants(mapped);
@@ -306,13 +344,11 @@ export function RoomPlayer() {
                         <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                              Listeners <span className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded text-[10px]">{allListeners.length}</span>
                         </h4>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-3">
                             {recentListeners.map((p, idx) => (
-                                <div key={p.user_id || idx} className="flex items-center gap-2 pl-1 pr-3 py-1 bg-zinc-900/50 border border-white/5 rounded-full">
-                                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center text-[8px] font-bold text-zinc-400 border border-white/5">
-                                        {(p.user_name || p.username || "?").charAt(0).toUpperCase()}
-                                    </div>
-                                    <span className="text-xs text-zinc-400 truncate max-w-[80px]">
+                                <div key={p.user_id || idx} className="flex flex-col items-center gap-1.5">
+                                    <ListenerAvatar name={p.user_name || p.username} />
+                                    <span className="text-[10px] text-zinc-400 truncate max-w-[60px] text-center">
                                         {p.user_name || p.username || "Guest"}
                                     </span>
                                 </div>
