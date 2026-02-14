@@ -5,8 +5,10 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { base } from "viem/chains";
 
-import { auth } from "@/services/firebase.service";
-import { onAuthStateChanged, TwitterAuthProvider, signInWithPopup, User } from "firebase/auth";
+import { auth, db } from "@/services/firebase.service";
+import { onAuthStateChanged, TwitterAuthProvider, signInWithPopup, User, getAdditionalUserInfo } from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { createUser } from "@/services/db/users.db";
 
 interface AuthContextType {
   user: User | null;
@@ -48,7 +50,12 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleTwitterLogin = async () => {
     const provider = new TwitterAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      const additionalUserInfo = getAdditionalUserInfo(result);
+      
+      await createUser(user, additionalUserInfo);
+
       // Successfully logged in
     } catch (error) {
       console.error("Error signing in with Twitter:", error);
