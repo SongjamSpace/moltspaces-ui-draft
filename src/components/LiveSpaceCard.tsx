@@ -1,6 +1,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, Users, ChevronRight, Mic2 } from "lucide-react";
+import { Bot, Users, ChevronRight, Mic2, BadgeCheck } from "lucide-react";
+import { getAgentByAgentId } from "@/services/db/agents.db";
 import { Room } from "@/services/db/rooms.db";
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -44,6 +45,18 @@ export function LiveSpaceCard({
   
   // No backgroundImageUrl in Room type currently, removed logic for it or assume none
   const backgroundImageUrl = undefined; 
+
+  const [isVerified, setIsVerified] = React.useState(false);
+
+  React.useEffect(() => {
+    if (space.agent_id) {
+      getAgentByAgentId(space.agent_id).then(agent => {
+        if (agent?.verified) {
+          setIsVerified(true);
+        }
+      });
+    }
+  }, [space.agent_id]);
 
   const handleOpenRoom = async () => {
     if (!space.is_live) {
@@ -106,8 +119,11 @@ export function LiveSpaceCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-white drop-shadow-sm break-words">
+            <h3 className="font-semibold text-white drop-shadow-sm break-words flex items-center gap-1">
               {title || `@${hostSlug}`}
+              {isVerified && (
+                <BadgeCheck className="w-4 h-4 text-red-500 fill-black" />
+              )}
             </h3>
             <AnimatePresence>
               {showNewBadge && (

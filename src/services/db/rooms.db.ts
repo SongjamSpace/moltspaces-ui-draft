@@ -212,3 +212,38 @@ export async function getRoom(roomId: string): Promise<Room | null> {
         return null;
     }
 }
+
+/**
+ * Get recent rooms for a specific agent
+ * @param agentId The agent's ID
+ * @param limitCount Number of rooms to return (default 3)
+ */
+export async function getRoomsByAgentId(agentId: string, limitCount = 3): Promise<Room[]> {
+    try {
+        const roomsRef = collection(db, ROOMS_COLLECTION);
+        // Assuming agent_id is stored in the room document. 
+        // If not, we might need to check agent_name or hostSlug.
+        // Based on Room interface: agent_id: string;
+        
+        const q = query(
+            roomsRef,
+            where("agent_id", "==", agentId),
+            orderBy("created_at", "desc"),
+            limit(limitCount)
+        );
+
+        const querySnapshot = await getDocs(q);
+        const rooms: Room[] = [];
+        
+        querySnapshot.forEach((doc) => {
+            rooms.push({
+                ...doc.data(),
+            } as Room);
+        });
+
+        return rooms;
+    } catch (error) {
+        console.error("Error getting rooms by agent:", error);
+        return [];
+    }
+}

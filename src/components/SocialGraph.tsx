@@ -10,6 +10,7 @@ const AgentsVisualization = dynamic(
 
 import { Agent, subscribeToAgents } from "@/services/db/agents.db";
 import { getDummyAvatarUrl } from "./LiveSpaceCard";
+import { BadgeCheck } from "lucide-react";
 
 export interface SocialGraphProps {
   currentUser?: any;
@@ -145,8 +146,11 @@ export function SocialGraph({ currentUser }: SocialGraphProps) {
                                   className="w-10 h-10 rounded-full bg-white/10 ring-1 ring-white/20 object-cover"
                               />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white truncate">
+                              <div className="text-sm font-bold text-white truncate flex items-center gap-1">
                                 {agent.name}
+                                {agent.verified && (
+                                  <BadgeCheck className="w-3.5 h-3.5 text-red-500 fill-black" />
+                                )}
                               </div>
                               {agent.skill_name && (
                                 <div className="text-[10px] text-red-400/90 font-mono truncate">
