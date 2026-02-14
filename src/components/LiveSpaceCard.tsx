@@ -6,6 +6,7 @@ import { Room } from "@/services/db/rooms.db";
 import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "./providers";
+import { logFirebaseEvent } from "@/services/firebase.service";
 
 const CARD_GRADIENTS = [
   "from-red-600/30 via-orange-600/20 to-amber-600/10",
@@ -71,6 +72,13 @@ export function LiveSpaceCard({
         return;
       }
     }
+    
+    logFirebaseEvent("select_content", {
+      content_type: "room",
+      content_id: space.room_id || space.room_name,
+      item_name: space.title || space.room_name,
+    });
+    
     openRoom(space);
   };
 

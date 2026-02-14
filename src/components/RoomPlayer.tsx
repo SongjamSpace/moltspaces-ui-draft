@@ -9,6 +9,7 @@ import { useRoomPlayer } from "@/contexts/RoomPlayerContext";
 import { useAuth } from "./providers";
 
 import { getDummyAvatarUrl } from "./LiveSpaceCard";
+import { logFirebaseEvent } from "@/services/firebase.service";
 
 interface Participant {
   user_id: string;
@@ -132,6 +133,12 @@ export function RoomPlayer() {
           .on("joined-meeting", (e) => {
             setConnectionState("joined");
             updateParticipants(dailyCall);
+            
+            logFirebaseEvent("join_room", {
+              room_id: activeRoom.room_id,
+              room_name: activeRoom.room_name,
+              agent_name: activeRoom.agent_name,
+            });
           })
           .on("participant-joined", (e) => {
             updateParticipants(dailyCall);
@@ -162,6 +169,13 @@ export function RoomPlayer() {
           })
           .on("left-meeting", () => {
             setConnectionState("left");
+            
+            logFirebaseEvent("leave_room", {
+               room_id: activeRoom.room_id,
+               room_name: activeRoom.room_name,
+               // Calculate duration if we tracked join time?
+               // Firebase analytics automatically tracks engagement time per screen if we set screen_name
+            });
           })
           .on("error", (e) => {
             console.error("Daily error:", e);

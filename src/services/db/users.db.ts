@@ -1,4 +1,4 @@
-import { db } from "../firebase.service";
+import { db, logFirebaseEvent } from "../firebase.service";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { User as FirebaseUser, AdditionalUserInfo } from "firebase/auth";
 
@@ -63,6 +63,11 @@ export const createUser = async (user: FirebaseUser, additionalUserInfo: Additio
         twitterId,
         username,
         createdAt: serverTimestamp(),
+      });
+
+      logFirebaseEvent("sign_up", {
+        method: "twitter",
+        user_id: user.uid,
       });
     } catch (error) {
       console.error("Error creating user in DB:", error);

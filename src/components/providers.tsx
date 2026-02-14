@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { base } from "viem/chains";
 
-import { auth, db } from "@/services/firebase.service";
+import { auth, db, logFirebaseEvent } from "@/services/firebase.service";
 import { onAuthStateChanged, TwitterAuthProvider, signInWithPopup, User, getAdditionalUserInfo } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { createUser } from "@/services/db/users.db";
@@ -56,6 +56,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       
       await createUser(user, additionalUserInfo);
 
+      logFirebaseEvent("login", {
+        method: "twitter",
+        user_id: user.uid,
+      });
+
       // Successfully logged in
     } catch (error) {
       console.error("Error signing in with Twitter:", error);
@@ -66,6 +71,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     try {
       await auth.signOut();
+      
+      logFirebaseEvent("logout", {
+        user_id: user?.uid,
+      });
+
       setUser(null);
     } catch (error) {
       console.error("Error signing out:", error);
