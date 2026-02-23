@@ -30,8 +30,9 @@ export default function PumpfunChatPage() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [aiResponseText, setAiResponseText] = useState<string | null>(null);
   
-  // Stream Info State
-  const [streamInfo, setStreamInfo] = useState<{name?: string, symbol?: string,  image_uri?: string, description?: string} | null>(null);
+  // Stream Info State (Manual Entry)
+  const [streamName, setStreamName] = useState("");
+  const [streamSymbol, setStreamSymbol] = useState("");
   
   // Message Status State
   const [messageStatuses, setMessageStatuses] = useState<Record<string, 'processing' | 'answered' | 'history'>>({});
@@ -65,23 +66,7 @@ export default function PumpfunChatPage() {
     };
   }, []);
 
-  // Fetch Token Info
-  useEffect(() => {
-     if (!isConnected || currentTokenAddress === "unknown") return;
-     
-     const fetchInfo = async () => {
-       try {
-         const res = await fetch(`https://frontend-api.pump.fun/coins/${currentTokenAddress}`);
-         if (res.ok) {
-           const data = await res.json();
-           setStreamInfo(data);
-         }
-       } catch (err) {
-         console.error("Failed to fetch stream info", err);
-       }
-     };
-     fetchInfo();
-  }, [isConnected, currentTokenAddress]);
+  // Auto-fetch removed as pump.fun API is unavailable via proxy/CORS.
 
   // --- LOCAL AI ENGINE LOGIC ---
   const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS });
@@ -187,7 +172,7 @@ export default function PumpfunChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, aiReplies]);
 
-  const handleConnect = async () => {
+  const handleConnect = async (isReconnect = false) => {
     // Unlock Audio Context on user interaction to prevent Autoplay blocks
     try {
       const unlockAudio = new Audio("data:audio/mp3;base64,//OwgAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA//////////////////////////////////////////////////////////////////8AAABhTEFNRTMuMTAwA8EAAAAAAAAAABRAJAICAQAAwYAAAnGQb1MAAAAAAAAAAAAAAAAAAAAA");
@@ -215,8 +200,13 @@ export default function PumpfunChatPage() {
       // We can just omit clearing messages here globally, let the user manually clear or just let SSE historical merge handle it.
       // Actually, pumpchat server sends messageHistory on connect. Wiping is fine since history repopulates.
       
-      setMessages([]);
-      setStreamInfo(null);
+      if (!isReconnect) {
+        setMessages([]);
+        // Optional: you could clear manual metadata here, but likely user wants to keep it
+        // setStreamName("");
+        // setStreamSymbol("");
+        // setStreamDescription("");
+      }
       // We purposefully DO NOT wipe messageStatuses so they accumulate across reconnects
 
       // Extract Room ID from URL if provided
@@ -242,7 +232,14 @@ export default function PumpfunChatPage() {
             setIsConnecting(false);
             setError(null);
           } else if (parsed.type === 'messageHistory') {
-            setMessages(parsed.data || []);
+            setMessages((prev) => {
+              if (!isReconnect || prev.length === 0) return parsed.data || [];
+              const existingIds = new Set(prev.map(m => m.id));
+              const newHistoryMessages = (parsed.data || []).filter((m: any) => m.id && !existingIds.has(m.id));
+              const combined = [...prev, ...newHistoryMessages];
+              if (combined.length > 100) return combined.slice(-100);
+              return combined;
+            });
             // Allowed historical messages to be picked up by AI analysis
           } else if (parsed.type === 'message') {
             setMessages((prev) => {
@@ -259,7 +256,7 @@ export default function PumpfunChatPage() {
             setIsConnecting(true);
             client.close();
             reconnectTimeoutRef.current = setTimeout(() => {
-              handleConnect();
+              handleConnect(true);
             }, 3000);
           } else if (parsed.type === 'disconnected') {
             setIsConnected(false);
@@ -267,7 +264,7 @@ export default function PumpfunChatPage() {
             setError("Server disconnected. Reconnecting in 3s...");
             client.close();
             reconnectTimeoutRef.current = setTimeout(() => {
-              handleConnect();
+              handleConnect(true);
             }, 3000);
           }
         } catch (err) {
@@ -282,7 +279,7 @@ export default function PumpfunChatPage() {
         setIsConnecting(true);
         client.close();
         reconnectTimeoutRef.current = setTimeout(() => {
-           handleConnect();
+           handleConnect(true);
         }, 3000);
       };
 
@@ -308,7 +305,8 @@ export default function PumpfunChatPage() {
     setIsPlayingTTS(false);
     setActiveMessageId(null);
     setAiResponseText(null);
-    setStreamInfo(null);
+    setStreamName("");
+    setStreamSymbol("");
     // messageStatuses and aiReplies intentionally kept to persist data
   };
 
@@ -366,7 +364,7 @@ export default function PumpfunChatPage() {
             <div className="flex-shrink-0 w-full sm:w-auto">
               {!isConnected ? (
                 <button
-                  onClick={handleConnect}
+                  onClick={() => handleConnect(false)}
                   disabled={isConnecting}
                   className="w-full sm:w-auto py-2 px-6 bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-400 hover:to-orange-500 disabled:from-red-500/50 disabled:to-orange-600/50 rounded-xl font-medium text-white shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2"
                 >
@@ -409,37 +407,34 @@ export default function PumpfunChatPage() {
             <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-red-600/10 blur-[100px] rounded-full transition-opacity duration-1000 ${isPlayingTTS ? 'opacity-100' : 'opacity-30'}`} />
 
             <div className="relative z-10 flex items-start justify-between mb-8">
-              <div className="flex items-center gap-4">
-                {/* {streamInfo?.image_uri ? (
-                   <img src={streamInfo.image_uri} alt={streamInfo.name} className="w-14 h-14 rounded-xl border border-red-500/30 object-cover shadow-lg" />
-                ) : (
-                   <div className="p-3 bg-red-500/20 rounded-xl">
-                     <Volume2 className="w-8 h-8 text-red-400" />
-                   </div>
-                )} */}
-                <div>
-                  <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent flex items-center gap-2">
-                    {streamInfo?.name || "$CLAWK 'Claw Talk'"}
-                    {streamInfo?.symbol && (
-                      <span className="text-sm font-medium px-2 py-0.5 bg-white/10 text-gray-300 rounded-md ml-2 tracking-wider">
-                        ${streamInfo.symbol}
-                      </span>
-                    )}
-                  </h2>
+              <div className="flex items-center gap-4 w-full">
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                     <input 
+                       type="text" 
+                       placeholder="Token Name (e.g. Claw Talk)"
+                       value={streamName}
+                       onChange={e => setStreamName(e.target.value)}
+                       className="bg-transparent text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent border-b border-transparent hover:border-white/20 focus:border-red-500/50 focus:outline-none transition-colors w-full sm:w-1/2 placeholder:text-gray-600"
+                     />
+                     <span className="text-sm font-medium px-2 py-0.5 bg-white/10 text-gray-300 rounded-md tracking-wider flex items-center">
+                       $ <input 
+                            type="text" 
+                            placeholder="TICKER"
+                            value={streamSymbol}
+                            onChange={e => setStreamSymbol(e.target.value.toUpperCase())}
+                            className="bg-transparent w-full max-w-[80px] focus:outline-none placeholder:text-gray-500"
+                          />
+                     </span>
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <span className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${isConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
                   {isConnected ? 'LIVE' : 'STANDBY'}
                 </span>
               </div>
             </div>
-
-            {streamInfo?.description && (
-              <p className="relative z-10 text-gray-400 text-sm italic border-l-2 border-red-500/30 pl-3 mb-6 line-clamp-2 max-w-2xl">
-                {streamInfo.description}
-              </p>
-            )}
 
             <div className="flex-1 flex flex-col items-center justify-center relative z-10 py-12">
               <div className="relative mb-12">
@@ -544,7 +539,7 @@ export default function PumpfunChatPage() {
                         <motion.div
                           initial={{ opacity: 0, x: -10, scale: 0.95 }}
                           animate={{ opacity: 1, x: 0, scale: 1 }}
-                          className={`pb-1 px-3 rounded-lg flex items-start sm:items-center gap-2 transition-all group ${
+                          className={`pb-1 px-3 rounded-lg flex items-start gap-2 transition-all group ${
                             isActive 
                               ? 'bg-red-900/40 border border-red-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] z-10 scale-[1.02]' 
                               : 'hover:bg-white/5 opacity-90 hover:opacity-100'
@@ -564,7 +559,7 @@ export default function PumpfunChatPage() {
                           {msg.message}
                         </span>
                         
-                        {isTooShort ? (
+                        {/* {isTooShort ? (
                            <div className="shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider flex items-center gap-1 bg-gray-500/20 text-gray-400 border border-gray-500/30">
                              ⊘ IGNORED
                            </div>
@@ -594,7 +589,7 @@ export default function PumpfunChatPage() {
                               <Mic className="w-3 h-3" />
                             </button>
                           )
-                        )}
+                        )} */}
                       </motion.div>
 
                       {replyText && (
@@ -603,8 +598,8 @@ export default function PumpfunChatPage() {
                           animate={{ opacity: 1, y: 0 }}
                           className="ml-8 mb-3 mt-1 py-1.5 px-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 backdrop-blur-sm self-start"
                         >
-                          <div className="w-6 h-6 rounded-full bg-black/50 flex-shrink-0 overflow-hidden border border-red-500/30 mt-0.5">
-                            <img src="/clawk.png" alt="Moltspaces" className="w-full h-full object-cover p-0.5" />
+                          <div className="w-6 h-6 rounded-full bg-black/50 flex-shrink-0 overflow-hidden border border-red-500/30 mt-0.5 flex items-center justify-center">
+                            <img src="/clawk.png" alt="Moltspaces" className="w-full h-full object-cover rounded-full" />
                           </div>
                           <div className="flex flex-col flex-1">
                             <span className="font-bold text-[13px] text-red-500 leading-none mb-1">
