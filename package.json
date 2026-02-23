@@ -35,6 +35,7 @@
     "moment": "^2.30.1",
     "next": "15.5.7",
     "openai": "^5.12.2",
+    "pump-chat-client": "^1.0.1",
     "qr-code-styling": "^1.9.2",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
