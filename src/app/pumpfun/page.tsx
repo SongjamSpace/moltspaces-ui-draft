@@ -604,7 +604,7 @@ export default function PumpfunChatPage() {
                           className="ml-8 mb-3 mt-1 py-1.5 px-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 backdrop-blur-sm self-start"
                         >
                           <div className="w-6 h-6 rounded-full bg-black/50 flex-shrink-0 overflow-hidden border border-red-500/30 mt-0.5">
-                            <img src="/pumpfun.png" alt="Moltspaces" className="w-full h-full object-cover p-0.5" />
+                            <img src="/clawk.png" alt="Moltspaces" className="w-full h-full object-cover p-0.5" />
                           </div>
                           <div className="flex flex-col flex-1">
                             <span className="font-bold text-[13px] text-red-500 leading-none mb-1">
