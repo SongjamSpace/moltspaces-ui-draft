@@ -41,6 +41,7 @@ export default function PumpfunChatPage() {
   const lastPlayedTimestampRef = useRef<number>(0);
 
   const clientRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Assume generic parsed room ID for DB
@@ -57,6 +58,9 @@ export default function PumpfunChatPage() {
     return () => {
       if (clientRef.current) {
         clientRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
       }
     };
   }, []);
@@ -196,9 +200,21 @@ export default function PumpfunChatPage() {
       return;
     }
 
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
     try {
       setIsConnecting(true);
       setError(null);
+      // Only clear messages if we are not actively attempting to reconnect (i.e. if it's a fresh manual connection)
+      // Since handleConnect clears history, we should avoid wiping during auto-reconnect, but for now it's fine
+      // because `messages` are already wiped on fresh start. Wait, doing this will wipe the UI every time it reconnects!
+      // Let's only clear messages if we are NOT currently marked as connecting. Wait, handleConnect always runs setIsConnecting(true) first.
+      // We can just omit clearing messages here globally, let the user manually clear or just let SSE historical merge handle it.
+      // Actually, pumpchat server sends messageHistory on connect. Wiping is fine since history repopulates.
+      
       setMessages([]);
       setStreamInfo(null);
       // We purposefully DO NOT wipe messageStatuses so they accumulate across reconnects
@@ -238,12 +254,21 @@ export default function PumpfunChatPage() {
             });
           } else if (parsed.type === 'error') {
             console.error("Chat error:", parsed.data);
-            setError(parsed.data || "Connection error occurred");
-            setIsConnecting(false);
+            setError(`Connection error: ${parsed.data}. Reconnecting in 3s...`);
+            setIsConnected(false);
+            setIsConnecting(true);
+            client.close();
+            reconnectTimeoutRef.current = setTimeout(() => {
+              handleConnect();
+            }, 3000);
           } else if (parsed.type === 'disconnected') {
             setIsConnected(false);
             setIsConnecting(true); // Indicate reconnecting
-            // Do not close EventSource, let server auto-reconnect
+            setError("Server disconnected. Reconnecting in 3s...");
+            client.close();
+            reconnectTimeoutRef.current = setTimeout(() => {
+              handleConnect();
+            }, 3000);
           }
         } catch (err) {
           console.error("Error parsing SSE data", err);
@@ -252,10 +277,13 @@ export default function PumpfunChatPage() {
 
       client.onerror = (err) => {
         console.error("SSE Error:", err);
-        setError("Lost connection to chat server or invalid token address");
+        setError("Lost connection to chat server. Reconnecting in 3s...");
         setIsConnected(false);
-        setIsConnecting(false);
+        setIsConnecting(true);
         client.close();
+        reconnectTimeoutRef.current = setTimeout(() => {
+           handleConnect();
+        }, 3000);
       };
 
       clientRef.current = client;
@@ -269,6 +297,10 @@ export default function PumpfunChatPage() {
     if (clientRef.current) {
       clientRef.current.close();
       clientRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     setIsConnected(false);
     setIsConnecting(false);
@@ -576,7 +608,7 @@ export default function PumpfunChatPage() {
                           </div>
                           <div className="flex flex-col flex-1">
                             <span className="font-bold text-[13px] text-red-500 leading-none mb-1">
-                              Moltspaces
+                              Claw Talk
                             </span>
                             <span className="text-[13px] text-red-100 font-medium leading-snug">
                               {replyText}
