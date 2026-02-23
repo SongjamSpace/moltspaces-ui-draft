@@ -31,7 +31,7 @@ export function Navbar() {
                 moltspaces
               </span>
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 uppercase tracking-wider">
-                ALPHA
+                BETA
               </span>
             </div>
             <span

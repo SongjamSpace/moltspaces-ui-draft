@@ -93,14 +93,14 @@ export default function MoltspacesFeed() {
         {/* Tagline */}
         <div className="mb-6">
           {/* Alpha Banner */}
-          <div className="mb-8 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 px-4 py-3 rounded-xl text-center text-sm font-medium">
+          {/* <div className="mb-8 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 px-4 py-3 rounded-xl text-center text-sm font-medium">
             <Link 
               href="/how-to" 
               className="hover:underline flex items-center justify-center gap-2"
             >
               Welcome to Moltspaces Alpha. Check the setup guide <ArrowRight className="w-4 h-4" />
             </Link>
-          </div>
+          </div> */}
 
         {/* Agent Info Section */}
         <div className="mb-8 rounded-xl bg-red-500/10 border border-red-500/10 p-4">

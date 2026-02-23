@@ -25,20 +25,33 @@ export default function PumpfunChatPage() {
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Audio state mock
+  // AI Agent state
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const [aiResponseText, setAiResponseText] = useState<string | null>(null);
+  
+  // Stream Info State
+  const [streamInfo, setStreamInfo] = useState<{name?: string, symbol?: string,  image_uri?: string, description?: string} | null>(null);
+  
+  // Message Status State
+  const [messageStatuses, setMessageStatuses] = useState<Record<string, 'processing' | 'answered' | 'history'>>({});
+  const [aiReplies, setAiReplies] = useState<Record<string, string>>({});
+  
+  // Track last played timestamp to avoid replaying the same broadcast
+  const lastPlayedTimestampRef = useRef<number>(0);
 
   const clientRef = useRef<EventSource | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  
+  // Assume generic parsed room ID for DB
+  const currentTokenAddress = React.useMemo(() => {
+    let roomId = addressInput.trim();
+    if (roomId.includes("pump.fun/")) {
+      const parts = roomId.split("/");
+      roomId = parts[parts.length - 1].split("?")[0];
+    }
+    return roomId || "unknown";
+  }, [addressInput]);
 
   useEffect(() => {
     return () => {
@@ -48,35 +61,136 @@ export default function PumpfunChatPage() {
     };
   }, []);
 
-  // Simulated AI Engine - picks a message every ~8 seconds to "answer"
+  // Fetch Token Info
   useEffect(() => {
-    if (!isConnected || messages.length === 0) return;
+     if (!isConnected || currentTokenAddress === "unknown") return;
+     
+     const fetchInfo = async () => {
+       try {
+         const res = await fetch(`https://frontend-api.pump.fun/coins/${currentTokenAddress}`);
+         if (res.ok) {
+           const data = await res.json();
+           setStreamInfo(data);
+         }
+       } catch (err) {
+         console.error("Failed to fetch stream info", err);
+       }
+     };
+     fetchInfo();
+  }, [isConnected, currentTokenAddress]);
 
-    const interval = setInterval(() => {
-      if (isPlayingTTS) return; // Don't interrupt if already speaking
+  // --- LOCAL AI ENGINE LOGIC ---
+  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS });
+  useEffect(() => {
+    stateRefs.current = { messages, messageStatuses, isPlayingTTS };
+  }, [messages, messageStatuses, isPlayingTTS]);
+
+  const triggerAgent = async (msgToProcess: IMessage) => {
+    if (stateRefs.current.isPlayingTTS) return;
+    
+    setActiveMessageId(msgToProcess.id);
+    setIsPlayingTTS(true);
+    setAiResponseText(null);
+
+    try {
+      setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'processing' }));
+
+      const res = await fetch('/api/agent/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: msgToProcess.message,
+          username: msgToProcess.username,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`API returned ${res.status}`);
+      }
+
+      const data = await res.json();
+      setAiResponseText(data.text);
+      setAiReplies(prev => ({ ...prev, [msgToProcess.id]: data.text }));
       
-      // Look for a recent un-answered message (last 10)
-      const recentMessages = messages.slice(-10);
-      if (recentMessages.length > 0) {
-        debugger
-        const randomMsg = recentMessages[Math.floor(Math.random() * recentMessages.length)];
-        
-        setActiveMessageId(randomMsg.id);
-        setIsPlayingTTS(true);
-
-        // Simulate speaking duration (3-6 seconds)
-        const speakingDuration = 3000 + Math.random() * 3000;
+      if (data.audio) {
+        // Play locally
+        const audio = new Audio(data.audio);
+        audio.onended = () => {
+          setIsPlayingTTS(false);
+          setActiveMessageId(null);
+          setAiResponseText(null);
+        };
+        await audio.play();
+        // Mark as successfully answered locally
+        setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
+      } else {
+        // Fallback if no audio was generated
         setTimeout(() => {
           setIsPlayingTTS(false);
           setActiveMessageId(null);
-        }, speakingDuration);
+          setAiResponseText(null);
+        }, 6000);
+        setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
       }
-    }, 8000);
+    } catch (error) {
+      console.error("Agent interaction failed", error);
+      // Mark as answered or error so the UI can move on from the loading state
+      setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
+      
+      // If we had text but audio failed, we should still show the text for a bit
+      setTimeout(() => {
+         setIsPlayingTTS(false);
+         setActiveMessageId(null);
+         setAiResponseText(null);
+      }, 3000);
+    }
+  };
+
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const interval = setInterval(async () => {
+      const { messages: currentMessages, messageStatuses: currentStatuses, isPlayingTTS: currentPlayingTTS } = stateRefs.current;
+
+      if (currentPlayingTTS) return; // Don't interrupt if already processing
+      if (currentMessages.length === 0) return;
+      
+      // Look for recent messages (only the last 2 to prevent answering old backlog)
+      const recentMessages = currentMessages.slice(-2);
+      
+      // Filter out messages that are already processing/answered, or too short/junk
+      const validMessages = recentMessages.filter(msg => {
+        const isHandled = currentStatuses[msg.id];
+        const isTooShort = msg.message.trim().length <= 3;
+        // Basic junk filters (can be expanded later)
+        const isJunk = /^(lfg|gm|gn|wow|lol|lmao)$/i.test(msg.message.trim());
+        
+        return !isHandled && !isTooShort && !isJunk;
+      });
+
+      if (validMessages.length > 0) {
+        // ALWAYS pick the LAST valid message instead of a random one
+        const msgToProcess = validMessages[validMessages.length - 1];
+        triggerAgent(msgToProcess);
+      }
+    }, 1000); // Check every 1 second to make response immediate
 
     return () => clearInterval(interval);
-  }, [isConnected, messages, isPlayingTTS]);
+  }, [isConnected]);
+
+  // Auto-scroll to the bottom of the chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, aiReplies]);
 
   const handleConnect = async () => {
+    // Unlock Audio Context on user interaction to prevent Autoplay blocks
+    try {
+      const unlockAudio = new Audio("data:audio/mp3;base64,//OwgAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA//////////////////////////////////////////////////////////////////8AAABhTEFNRTMuMTAwA8EAAAAAAAAAABRAJAICAQAAwYAAAnGQb1MAAAAAAAAAAAAAAAAAAAAA");
+      unlockAudio.volume = 0.01;
+      unlockAudio.play().catch(e => console.warn("Audio unlock failed:", e));
+    } catch(e) {}
+
     if (!addressInput.trim()) {
       setError("Please enter a token address or URL");
       return;
@@ -86,6 +200,8 @@ export default function PumpfunChatPage() {
       setIsConnecting(true);
       setError(null);
       setMessages([]);
+      setStreamInfo(null);
+      // We purposefully DO NOT wipe messageStatuses so they accumulate across reconnects
 
       // Extract Room ID from URL if provided
       let roomId = addressInput.trim();
@@ -111,6 +227,7 @@ export default function PumpfunChatPage() {
             setError(null);
           } else if (parsed.type === 'messageHistory') {
             setMessages(parsed.data || []);
+            // Allowed historical messages to be picked up by AI analysis
           } else if (parsed.type === 'message') {
             setMessages((prev) => {
               // Avoid duplicates if SSE reconnects and sends history
@@ -125,7 +242,8 @@ export default function PumpfunChatPage() {
             setIsConnecting(false);
           } else if (parsed.type === 'disconnected') {
             setIsConnected(false);
-            client.close();
+            setIsConnecting(true); // Indicate reconnecting
+            // Do not close EventSource, let server auto-reconnect
           }
         } catch (err) {
           console.error("Error parsing SSE data", err);
@@ -153,29 +271,31 @@ export default function PumpfunChatPage() {
       clientRef.current = null;
     }
     setIsConnected(false);
+    setIsConnecting(false);
     setMessages([]);
     setIsPlayingTTS(false);
     setActiveMessageId(null);
+    setAiResponseText(null);
+    setStreamInfo(null);
+    // messageStatuses and aiReplies intentionally kept to persist data
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col font-sans selection:bg-indigo-500/30">
+    <div className="h-screen bg-[#0A0A0A] text-white flex flex-col font-sans selection:bg-red-500/30 overflow-hidden">
       {/* Background gradients */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 blur-[120px] rounded-full" />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-600/20 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-600/20 blur-[120px] rounded-full" />
       </div>
 
       <header className="relative z-10 border-b border-white/10 bg-black/40 backdrop-blur-md px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl">
-            <Radio className="w-5 h-5 text-white" />
-          </div>
+          <img src="/pumpfun.png" alt="Pumpfun Agent" className="w-9 h-9 rounded-xl object-contain bg-white/5" />
           <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-            Moltspaces <span className="text-indigo-400 ml-1">Live Agent</span>
+            Moltspaces <span className="text-red-400 ml-1">Live Agent</span>
           </h1>
         </div>
-        <div className="flex items-center gap-4">
+        {/* <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <span className="relative flex h-3 w-3">
               {isConnected ? (
@@ -189,14 +309,14 @@ export default function PumpfunChatPage() {
             </span>
             {isConnected ? "Connected" : "Disconnected"}
           </div>
-        </div>
+        </div> */}
       </header>
 
-      <main className="flex-1 relative z-10 p-6 flex flex-col gap-6 max-w-7xl mx-auto w-full h-full pb-8">
+      <main className="flex-1 relative z-10 p-6 flex flex-col gap-6 max-w-7xl mx-auto w-full h-full pb-8 overflow-y-auto lg:overflow-hidden lg:pb-6">
         
         {/* Top bar with connection settings (compact) */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm shadow-xl flex flex-col sm:flex-row items-center gap-4">
-          <div className="flex-1 flex gap-4 w-full">
+        <div className="flex-shrink-0 bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm shadow-xl flex flex-col items-center gap-4">
+          <div className="flex flex-col sm:flex-row w-full gap-4">
             <div className="flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <LinkIcon className="h-4 w-4 text-gray-500" />
@@ -207,38 +327,39 @@ export default function PumpfunChatPage() {
                 onChange={(e) => setAddressInput(e.target.value)}
                 disabled={isConnected || isConnecting}
                 placeholder="Token Address or URL"
-                className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all disabled:opacity-50"
+                className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all disabled:opacity-50"
               />
             </div>
-          </div>
 
-          <div className="flex-shrink-0 w-full sm:w-auto">
-            {!isConnected ? (
-              <button
-                onClick={handleConnect}
-                disabled={isConnecting}
-                className="w-full sm:w-auto py-2 px-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 disabled:from-indigo-500/50 disabled:to-purple-600/50 rounded-xl font-medium text-white shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
-              >
-                {isConnecting ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <Play className="w-4 h-4" />
-                    Start Agent
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handleDisconnect}
-                className="w-full sm:w-auto py-2 px-6 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl font-medium text-red-400 transition-all flex items-center justify-center gap-2"
-              >
-                <Square className="w-4 h-4" />
-                Stop Agent
-              </button>
-            )}
+            <div className="flex-shrink-0 w-full sm:w-auto">
+              {!isConnected ? (
+                <button
+                  onClick={handleConnect}
+                  disabled={isConnecting}
+                  className="w-full sm:w-auto py-2 px-6 bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-400 hover:to-orange-500 disabled:from-red-500/50 disabled:to-orange-600/50 rounded-xl font-medium text-white shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  {isConnecting ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      Start Agent
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleDisconnect}
+                  className="w-full sm:w-auto py-2 px-6 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl font-medium text-red-400 transition-all flex items-center justify-center gap-2"
+                >
+                  <Square className="w-4 h-4" />
+                  Stop Agent
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
 
         {error && (
           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-start gap-2">
@@ -248,22 +369,32 @@ export default function PumpfunChatPage() {
         )}
 
         {/* Main Content Area - Split Ratio 70/30 */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-[500px]">
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-[500px] lg:min-h-0">
           
           {/* AI Voice Agent - Dominant View */}
-          <div className="lg:w-[70%] bg-gradient-to-br from-indigo-950/40 to-black border border-indigo-500/20 rounded-3xl p-8 backdrop-blur-sm shadow-2xl flex flex-col relative overflow-hidden">
+          <div className="lg:w-[70%] bg-gradient-to-br from-red-950/40 to-black border border-red-500/20 rounded-3xl p-8 backdrop-blur-sm shadow-2xl flex flex-col relative overflow-hidden">
             {/* Ambient background glow */}
-            <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-indigo-600/10 blur-[100px] rounded-full transition-opacity duration-1000 ${isPlayingTTS ? 'opacity-100' : 'opacity-30'}`} />
+            <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-red-600/10 blur-[100px] rounded-full transition-opacity duration-1000 ${isPlayingTTS ? 'opacity-100' : 'opacity-30'}`} />
 
-            <div className="relative z-10 flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent flex items-center gap-3">
-                  <div className="p-2 bg-indigo-500/20 rounded-lg">
-                    <Volume2 className="w-6 h-6 text-indigo-400" />
-                  </div>
-                  moltspaces
-                </h2>
-                <p className="text-indigo-300 text-sm mt-1 ml-12">Voice Agent Active</p>
+            <div className="relative z-10 flex items-start justify-between mb-8">
+              <div className="flex items-center gap-4">
+                {/* {streamInfo?.image_uri ? (
+                   <img src={streamInfo.image_uri} alt={streamInfo.name} className="w-14 h-14 rounded-xl border border-red-500/30 object-cover shadow-lg" />
+                ) : (
+                   <div className="p-3 bg-red-500/20 rounded-xl">
+                     <Volume2 className="w-8 h-8 text-red-400" />
+                   </div>
+                )} */}
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent flex items-center gap-2">
+                    {streamInfo?.name || "$CLAWK 'Claw Talk'"}
+                    {streamInfo?.symbol && (
+                      <span className="text-sm font-medium px-2 py-0.5 bg-white/10 text-gray-300 rounded-md ml-2 tracking-wider">
+                        ${streamInfo.symbol}
+                      </span>
+                    )}
+                  </h2>
+                </div>
               </div>
               <div className="flex gap-2">
                 <span className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${isConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
@@ -272,24 +403,30 @@ export default function PumpfunChatPage() {
               </div>
             </div>
 
+            {streamInfo?.description && (
+              <p className="relative z-10 text-gray-400 text-sm italic border-l-2 border-red-500/30 pl-3 mb-6 line-clamp-2 max-w-2xl">
+                {streamInfo.description}
+              </p>
+            )}
+
             <div className="flex-1 flex flex-col items-center justify-center relative z-10 py-12">
               <div className="relative mb-12">
                 {/* Visualizer rings */}
                 <div
-                  className={`absolute inset-[-40px] rounded-full border border-indigo-500/30 transition-all duration-700 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
+                  className={`absolute inset-[-40px] rounded-full border border-red-500/30 transition-all duration-700 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
                 />
                 <div
-                  className={`absolute inset-[-80px] rounded-full border border-purple-500/20 transition-all duration-1000 delay-150 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
+                  className={`absolute inset-[-80px] rounded-full border border-orange-500/20 transition-all duration-1000 delay-150 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
                 />
                 <div
-                  className={`absolute inset-[-120px] rounded-full border border-indigo-500/10 transition-all duration-1000 delay-300 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
+                  className={`absolute inset-[-120px] rounded-full border border-red-500/10 transition-all duration-1000 delay-300 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
                 />
 
                 <div
-                  className={`w-40 h-40 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-[0_0_60px_rgba(99,102,241,0.4)] transition-all duration-300 relative z-10 ${isPlayingTTS ? "scale-105 shadow-[0_0_80px_rgba(99,102,241,0.6)]" : ""}`}
+                  className={`w-40 h-40 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(99,102,241,0.4)] transition-all duration-300 relative z-10 ${isPlayingTTS ? "scale-105 shadow-[0_0_80px_rgba(99,102,241,0.6)]" : ""}`}
                 >
                   <motion.div animate={{ scale: isPlayingTTS ? [1, 1.2, 1] : 1 }} transition={{ repeat: isPlayingTTS ? Infinity : 0, duration: 2 }}>
-                    <Mic className="w-16 h-16 text-white" />
+                    <img src="/pumpfun.png" alt="Clawk" className="w-26 h-26" />
                   </motion.div>
                 </div>
               </div>
@@ -304,15 +441,21 @@ export default function PumpfunChatPage() {
                       exit={{ opacity: 0, y: -10 }}
                       className="text-center"
                     >
-                      <p className="text-xl text-white font-medium mb-2 flex items-center gap-3 justify-center">
-                        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
-                        Answering Chat Message...
+                      <p className="text-xl text-white font-medium mb-4 flex items-center gap-3 justify-center">
+                        <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span>
+                        {aiResponseText ? "Speaking Response..." : "Generating Response..."}
                       </p>
                       
                       {/* Show the message text being answered inline for extreme clarity */}
-                      <p className="text-indigo-300 text-sm max-w-md mx-auto italic border-l-2 border-indigo-500/50 pl-3">
-                        "{messages.find(m => m.id === activeMessageId)?.message || "..."}"
+                      <p className="text-gray-400 text-sm max-w-xl mx-auto italic border-l-2 border-red-500/30 pl-3 mb-4 line-clamp-2">
+                        User: "{messages.find(m => m.id === activeMessageId)?.message || "..."}"
                       </p>
+
+                      {aiResponseText && (
+                        <p className="text-red-300 text-md max-w-xl mx-auto font-medium">
+                          Agent: "{aiResponseText}"
+                        </p>
+                      )}
                     </motion.div>
                   ) : (
                     <motion.p
@@ -328,37 +471,21 @@ export default function PumpfunChatPage() {
                 </AnimatePresence>
               </div>
             </div>
-            
-            {/* Mock Audio Player Controls */}
-            <div className="mt-auto pt-6 border-t border-white/10 flex items-center gap-6 text-gray-500 opacity-70">
-              <button disabled className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors">
-                <Play className="w-5 h-5 ml-1 text-white" />
-              </button>
-              <div className="flex-1 flex flex-col gap-2">
-                 <div className="h-2 bg-black/40 rounded-full overflow-hidden border border-white/5 relative">
-                   <div className={`absolute left-0 top-0 bottom-0 bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 ${isPlayingTTS ? 'w-[45%]' : 'w-0'}`}></div>
-                 </div>
-                 <div className="flex justify-between text-[10px] font-medium tracking-wider">
-                   <span>LIVE TTS FEED</span>
-                   <span className="text-indigo-400">{isPlayingTTS ? 'GENERATING' : 'IDLE'}</span>
-                 </div>
-              </div>
-            </div>
           </div>
 
           {/* Incoming Stream - Smaller / Side View */}
           <div className="lg:w-[30%] bg-black/40 border border-white/10 rounded-3xl flex flex-col backdrop-blur-md overflow-hidden shadow-xl">
             <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
               <h3 className="text-sm font-semibold flex items-center gap-2 text-gray-300">
-                <MessageSquare className="w-4 h-4 text-indigo-400" />
-                Live Chat Feed
+                <MessageSquare className="w-4 h-4 text-red-400" />
+                Live Chat
               </h3>
-              <div className="bg-white/10 px-2 py-0.5 text-[10px] rounded-full text-indigo-300 font-mono">
+              <div className="bg-white/10 px-2 py-0.5 text-[10px] rounded-full text-red-300 font-mono">
                 {messages.length} msgs
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 font-mono [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 font-mono scrollbar-thin">
               {!isConnected && messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 text-xs text-center p-6">
                   <Radio className="w-8 h-8 opacity-20" />
@@ -367,9 +494,9 @@ export default function PumpfunChatPage() {
               ) : messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 text-xs">
                   <div className="flex gap-1 items-center opacity-50">
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse delay-75" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse delay-150" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse delay-75" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse delay-150" />
                   </div>
                   <p>Listening...</p>
                 </div>
@@ -377,39 +504,87 @@ export default function PumpfunChatPage() {
                 <AnimatePresence initial={false}>
                   {messages.map((msg, i) => {
                     const isActive = msg.id === activeMessageId;
+                    const isTooShort = msg.message.trim().length <= 3;
+                    const replyText = aiReplies[msg.id];
                     
                     return (
-                      <motion.div
-                        key={msg.id || i}
-                        initial={{ opacity: 0, x: -10, scale: 0.95 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        className={`border p-3 rounded-2xl flex flex-col gap-1.5 transition-all ${
-                          isActive 
-                            ? 'bg-indigo-900/40 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] z-10 scale-[1.02]' 
-                            : 'bg-white/5 border-white/5 opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 max-w-[70%]">
-                            <div className="w-5 h-5 rounded-full bg-indigo-900/50 flex-shrink-0 flex items-center justify-center text-indigo-300 text-[9px] font-bold overflow-hidden">
-                              {msg.profile_image ? (
-                                <img src={msg.profile_image} alt="" className="w-full h-full object-cover" />
+                      <React.Fragment key={msg.id || i}>
+                        <motion.div
+                          initial={{ opacity: 0, x: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          className={`pb-1 px-3 rounded-lg flex items-start sm:items-center gap-2 transition-all group ${
+                            isActive 
+                              ? 'bg-red-900/40 border border-red-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] z-10 scale-[1.02]' 
+                              : 'hover:bg-white/5 opacity-90 hover:opacity-100'
+                          }`}
+                        >
+                        <div className="w-6 h-6 rounded-full bg-red-900/50 flex-shrink-0 flex items-center justify-center text-red-300 text-xs font-bold overflow-hidden mt-0.5 sm:mt-0">
+                          {msg.profile_image ? (
+                            <img src={msg.profile_image} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            (msg.username || "U").charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <span className={`font-bold text-[14px] flex-shrink-0 ${isActive ? 'text-white' : 'text-[#8A2BE2]'}`}>
+                          {msg.username?.slice(0,6) || "Anonymous"}
+                        </span>
+                        <span className={`text-[14px] break-words flex-1 ${isActive ? 'text-white font-medium' : 'text-gray-200'}`}>
+                          {msg.message}
+                        </span>
+                        
+                        {isTooShort ? (
+                           <div className="shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider flex items-center gap-1 bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                             ⊘ IGNORED
+                           </div>
+                        ) : (
+                          messageStatuses[msg.id] && messageStatuses[msg.id] !== 'history' ? (
+                            <div className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider flex items-center gap-1 ${
+                              messageStatuses[msg.id] === 'processing' 
+                                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
+                                : 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            }`}>
+                              {messageStatuses[msg.id] === 'processing' ? (
+                                <>
+                                  <div className="w-1.5 h-1.5 border border-orange-400/50 border-t-orange-400 rounded-full animate-spin" />
+                                  WAIT
+                                </>
                               ) : (
-                                (msg.username || "U").charAt(0).toUpperCase()
+                                <>✓ DONE</>
                               )}
                             </div>
-                            <span className={`font-semibold text-[10px] truncate max-w-full ${isActive ? 'text-white' : 'text-indigo-300'}`}>
-                              {msg.username || "Anonymous"}
+                          ) : (
+                            <button 
+                              onClick={() => triggerAgent(msg)}
+                              disabled={isPlayingTTS}
+                              className="shrink-0 p-1.5 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-all disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-gray-400 disabled:hover:border-transparent"
+                              title="Agent Reply"
+                            >
+                              <Mic className="w-3 h-3" />
+                            </button>
+                          )
+                        )}
+                      </motion.div>
+
+                      {replyText && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="ml-8 mb-3 mt-1 py-1.5 px-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 backdrop-blur-sm self-start"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-black/50 flex-shrink-0 overflow-hidden border border-red-500/30 mt-0.5">
+                            <img src="/pumpfun.png" alt="Moltspaces" className="w-full h-full object-cover p-0.5" />
+                          </div>
+                          <div className="flex flex-col flex-1">
+                            <span className="font-bold text-[13px] text-red-500 leading-none mb-1">
+                              Moltspaces
+                            </span>
+                            <span className="text-[13px] text-red-100 font-medium leading-snug">
+                              {replyText}
                             </span>
                           </div>
-                          <span className="text-[9px] text-gray-500 flex-shrink-0">
-                            {new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                          </span>
-                        </div>
-                        <p className={`text-xs break-words pl-7 leading-relaxed ${isActive ? 'text-white font-medium' : 'text-gray-400'}`}>
-                          {msg.message}
-                        </p>
-                      </motion.div>
+                        </motion.div>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </AnimatePresence>

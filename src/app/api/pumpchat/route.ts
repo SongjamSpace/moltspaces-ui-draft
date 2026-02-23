@@ -27,9 +27,14 @@ export async function GET(req: NextRequest) {
         }
       };
 
+      const keepAliveInterval = setInterval(() => {
+        safeEnqueue(': keepalive\n\n');
+      }, 15000);
+
       const safeClose = () => {
         if (isClosed) return;
         isClosed = true;
+        clearInterval(keepAliveInterval);
         try {
           controller.close();
         } catch (e) {}
@@ -61,7 +66,7 @@ export async function GET(req: NextRequest) {
 
       client.on('disconnected', () => {
         safeEnqueue(`data: ${JSON.stringify({ type: 'disconnected' })}\n\n`);
-        safeClose();
+        // Do not close the SSE connection here, allow pump-chat-client to reconnect automatically
       });
 
       // Handle client disconnect
@@ -86,6 +91,7 @@ export async function GET(req: NextRequest) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
+      'Content-Encoding': 'none',
     },
   });
 }
