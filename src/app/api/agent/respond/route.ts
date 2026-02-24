@@ -17,10 +17,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API keys missing on server. Check .env' }, { status: 500 });
     }
 
-    const { message, username } = await req.json();
+    const { message, username, bondingCurveData } = await req.json();
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+    }
+
+    let bondingCurveContext = "";
+    if (bondingCurveData) {
+      if (bondingCurveData.complete) {
+         bondingCurveContext = `\n\nCURRENT TOKEN BONDING CURVE INFO:\nThe bonding curve is COMPLETED and the token has graduated! The token is actively trading on Raydium.`;
+      } else {
+         const vSol = BigInt(bondingCurveData.virtualSolReserves || 0);
+         const supply = BigInt(bondingCurveData.tokenTotalSupply || 0);
+         const vToken = BigInt(bondingCurveData.virtualTokenReserves || 1);
+         const mcLamports = (vSol * supply) / vToken;
+         const mcSol = Number(mcLamports) / 1e9;
+         
+         const currentTokens = BigInt(bondingCurveData.realTokenReserves || 0);
+         const initialTokens = BigInt("793100000000000"); // 793.1M * 10^6
+         const pendingPct = Number((currentTokens * BigInt("10000")) / initialTokens) / 100;
+         
+         const solReserves = Number(bondingCurveData.realSolReserves || 0) / 1e9;
+         const totalSolNeeded = 85; 
+         const solNeeded = Math.max(0, totalSolNeeded - solReserves);
+
+         bondingCurveContext = `\n\nCURRENT TOKEN BONDING CURVE INFO:
+- Market Cap: ${mcSol.toFixed(2)} SOL
+- Pool Progress: ${pendingPct.toFixed(2)}% of tokens still pending to bond (Meaning ${100 - pendingPct}% of the curve is filled)
+- Remaining SOL Needed to Graduate: ${solNeeded.toFixed(2)} SOL
+Use this information to understand the current progress, market cap, and how much SOL is needed for the token to bond and graduate if relevant to the user message.`;
+      }
     }
 
     // 1. Generate text response with OpenAI
@@ -34,7 +61,7 @@ It generally has a bullish take on it's future as part of the broader moltspaces
 
 It is also launching a token called claw talk and when it hears a price in the message, react accordingly as we want to reach $33k to graduate and bond in pumpfun.
  
-The message in live chat is: "${message}"
+The message in live chat is: "${message}"${bondingCurveContext}
 
 Write a short, punchy, conversational response (1-2 sentences max). Be witty, confident, and sound natural when spoken aloud. Don't use emojis or markdown since this will be converted to speech.`;
 

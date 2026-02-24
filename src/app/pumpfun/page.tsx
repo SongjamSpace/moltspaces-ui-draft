@@ -15,6 +15,33 @@ import {
   Settings,
 } from "lucide-react";
 
+import { Connection, PublicKey } from "@solana/web3.js";
+import { OnlinePumpSdk } from "@pump-fun/pump-sdk";
+
+// Helper to serialize the bonding curve data for the AI context since it contains BigInt/BNs and PublicKeys
+function serializeBondingCurve(bc: any): any {
+  if (bc === null || bc === undefined) return bc;
+  if (typeof bc !== "object") return bc;
+  
+  if (bc.toBase58 && typeof bc.toBase58 === "function") {
+    return bc.toBase58();
+  }
+  
+  if (bc.toString && typeof bc.toString === "function" && bc.constructor && bc.constructor.name === "BN") {
+    return bc.toString();
+  }
+
+  if (Array.isArray(bc)) {
+    return bc.map(serializeBondingCurve);
+  }
+
+  const serialized: any = {};
+  for (const [key, value] of Object.entries(bc)) {
+    serialized[key] = serializeBondingCurve(value);
+  }
+  return serialized;
+}
+
 // Interface is imported from pumpChatClient
 
 export default function PumpfunChatPage() {
@@ -29,6 +56,7 @@ export default function PumpfunChatPage() {
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [aiResponseText, setAiResponseText] = useState<string | null>(null);
+  const [bondingCurveData, setBondingCurveData] = useState<any>(null);
   
   // Stream Info State (Manual Entry)
   const [streamName, setStreamName] = useState("");
@@ -69,10 +97,39 @@ export default function PumpfunChatPage() {
   // Auto-fetch removed as pump.fun API is unavailable via proxy/CORS.
 
   // --- LOCAL AI ENGINE LOGIC ---
-  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS });
+  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData });
   useEffect(() => {
-    stateRefs.current = { messages, messageStatuses, isPlayingTTS };
-  }, [messages, messageStatuses, isPlayingTTS]);
+    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData };
+  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData]);
+
+  // Fetch bonding curve info periodically directly from the client
+  useEffect(() => {
+    if (!isConnected || !currentTokenAddress || currentTokenAddress === "unknown") return;
+
+    let isMounted = true;
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const connection = new Connection(rpcUrl, "confirmed");
+    const sdk = new OnlinePumpSdk(connection);
+
+    const fetchBondingCurve = async () => {
+      try {
+        const mint = new PublicKey(currentTokenAddress);
+        const bondingCurve = await sdk.fetchBondingCurve(mint);
+        if (isMounted) {
+           setBondingCurveData(serializeBondingCurve(bondingCurve));
+        }
+      } catch (err) {
+        console.error("Failed to fetch bonding curve data:", err);
+      }
+    };
+
+    fetchBondingCurve();
+    const intervalId = setInterval(fetchBondingCurve, 5000); // 5 seconds interval
+    return () => {
+       isMounted = false;
+       clearInterval(intervalId);
+    };
+  }, [isConnected, currentTokenAddress]);
 
   const triggerAgent = async (msgToProcess: IMessage) => {
     if (stateRefs.current.isPlayingTTS) return;
@@ -90,6 +147,7 @@ export default function PumpfunChatPage() {
         body: JSON.stringify({
           message: msgToProcess.message,
           username: msgToProcess.username,
+          bondingCurveData: stateRefs.current.bondingCurveData,
         }),
       });
 
@@ -325,21 +383,7 @@ export default function PumpfunChatPage() {
             Moltspaces <span className="text-red-400 ml-1">Live Agent</span>
           </h1>
         </div>
-        {/* <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span className="relative flex h-3 w-3">
-              {isConnected ? (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </>
-              ) : (
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-              )}
-            </span>
-            {isConnected ? "Connected" : "Disconnected"}
-          </div>
-        </div> */}
+
       </header>
 
       <main className="flex-1 relative z-10 p-6 flex flex-col gap-6 max-w-7xl mx-auto w-full h-full pb-8 overflow-y-auto lg:overflow-hidden lg:pb-6">
@@ -429,10 +473,49 @@ export default function PumpfunChatPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <span className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${isConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
-                  {isConnected ? 'LIVE' : 'STANDBY'}
-                </span>
+              <div className="flex gap-4 shrink-0 items-center">
+                {bondingCurveData && (
+                  <div className="flex items-center gap-4 bg-white/5 px-4 py-1.5 rounded-2xl border border-white/10">
+                    <div className="flex flex-col">
+                       <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Bonding Curve</span>
+                       <span className={`text-xs font-mono font-medium ${bondingCurveData.complete ? 'text-emerald-400' : 'text-orange-400'}`}>
+                          {bondingCurveData.complete ? 'COMPLETED' : 'IN PROGRESS'}
+                       </span>
+                    </div>
+                    {!bondingCurveData.complete && (
+                      <>
+                        <div className="w-px h-6 bg-white/10" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Pending To Bond</span>
+                          <span className="text-xs font-mono text-gray-200">
+                            {bondingCurveData.realTokenReserves ? 
+                              (() => {
+                                const currentTokens = BigInt(bondingCurveData.realTokenReserves);
+                                const initialTokens = BigInt("793100000000000"); // 793.1M * 10^6
+                                const pendingPct = Number((currentTokens * BigInt("10000")) / initialTokens) / 100;
+                                return `${pendingPct.toFixed(2)}%`;
+                              })() : '--'}
+                          </span>
+                        </div>
+                        <div className="w-px h-6 bg-white/10" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Market Cap</span>
+                          <span className="text-xs font-mono text-gray-200">
+                            {bondingCurveData.virtualSolReserves && bondingCurveData.tokenTotalSupply && bondingCurveData.virtualTokenReserves ? 
+                              (() => {
+                                const vSol = BigInt(bondingCurveData.virtualSolReserves);
+                                const supply = BigInt(bondingCurveData.tokenTotalSupply);
+                                const vToken = BigInt(bondingCurveData.virtualTokenReserves);
+                                const mcLamports = (vSol * supply) / vToken;
+                                const mcSol = Number(mcLamports) / 1e9;
+                                return `${mcSol.toFixed(2)} SOL`;
+                              })() : '--'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
