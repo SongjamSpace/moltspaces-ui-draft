@@ -23,11 +23,15 @@ function serializeBondingCurve(bc: any): any {
   if (bc === null || bc === undefined) return bc;
   if (typeof bc !== "object") return bc;
   
+  if (typeof bc === "bigint") {
+    return bc.toString();
+  }
+  
   if (bc.toBase58 && typeof bc.toBase58 === "function") {
     return bc.toBase58();
   }
   
-  if (bc.toString && typeof bc.toString === "function" && bc.constructor && bc.constructor.name === "BN") {
+  if (bc.toString && typeof bc.toString === "function" && (bc.constructor?.name === "BN" || typeof bc.toNumber === "function")) {
     return bc.toString();
   }
 
@@ -731,7 +735,7 @@ export default function PumpfunChatPage() {
                           </div>
                           <div className="flex flex-col flex-1">
                             <span className="font-bold text-[13px] text-red-500 leading-none mb-1">
-                              Claw Talk
+                              {streamName || "Claw Talk"}
                             </span>
                             <span className="text-[13px] text-red-100 font-medium leading-snug">
                               {replyText}
