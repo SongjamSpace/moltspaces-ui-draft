@@ -102,10 +102,10 @@ export default function PumpfunChatPage() {
   // Auto-fetch removed as pump.fun API is unavailable via proxy/CORS.
 
   // --- LOCAL AI ENGINE LOGIC ---
-  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory });
+  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName });
   useEffect(() => {
-    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory };
-  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory]);
+    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName };
+  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName]);
 
   // Fetch bonding curve info periodically directly from the client
   useEffect(() => {
@@ -196,7 +196,8 @@ export default function PumpfunChatPage() {
           message: msgToProcess.message,
           username: msgToProcess.username,
           bondingCurveData: stateRefs.current.bondingCurveData,
-          priceChanges: { change1m, change5m }
+          priceChanges: { change1m, change5m },
+          streamName: stateRefs.current.streamName
         }),
       });
 

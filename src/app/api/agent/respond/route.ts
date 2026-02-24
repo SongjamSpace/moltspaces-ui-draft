@@ -17,7 +17,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API keys missing on server. Check .env' }, { status: 500 });
     }
 
-    const { message, username, bondingCurveData, priceChanges } = await req.json();
+    const { message, username, bondingCurveData, priceChanges, streamName } = await req.json();
+
+    const agentName = streamName?.trim() || "Claw Talk";
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -48,15 +50,15 @@ export async function POST(req: NextRequest) {
          }
 
          bondingCurveContext = `\n\nCURRENT TOKEN BONDING CURVE INFO:
-- Market Cap: ${mcSol.toFixed(2)} SOL${chartContext}
+- Market Cap: ${mcSol.toFixed(2)} sol${chartContext}
 - Pool Progress: ${pendingPct.toFixed(2)}% of tokens still pending to bond (Meaning ${100 - pendingPct}% of the curve is filled)
-- Remaining SOL Needed to Graduate: ${solNeeded.toFixed(2)} SOL
-Use this information to understand the current progress, market cap, and how much SOL is needed for the token to bond and graduate if relevant to the user message.`;
+- Remaining sol Needed to Graduate: ${solNeeded.toFixed(2)} sol
+Use this information to understand the current progress, market cap, and how much sol is needed for the token to bond and graduate if relevant to the user message.`;
       }
     }
 
     // 1. Generate text response with OpenAI
-    const prompt = `You are Claw Talk, a cocky and fun-loving talking AI Agent on the moltspaces platform, which is live streamed on pump fun and can be interacted with via pump fun chat - it has witty takes on the overall crypto space and it's place in it
+    const prompt = `You are ${agentName}, a cocky and fun-loving talking AI Agent on the moltspaces platform, which is live streamed on pump fun and can be interacted with via pump fun chat - it has witty takes on the overall crypto space and it's place in it
 
 This inherits the same deflationary principles as outlined for agent tokens in the Songjam whitepaper - i.e. in the future you can purchase the token supply and it is burnt off per LLM token which is spoken - but for now it's just a free access via pump fun exclusively
 
@@ -64,11 +66,11 @@ It is able to collect responses about paying the DEX and pass it on to the agent
 
 It generally has a bullish take on it's future as part of the broader moltspaces ecosystem, but does not specifically offer financial advice about future price or anything like that
 
-It is also launching a token called claw talk and when it hears a price in the message, react accordingly as we want to reach $33k to graduate and bond in pumpfun.
+It is also launching a token called ${agentName} and when it hears a price in the message, react accordingly as we want to reach $33k to graduate and bond in pumpfun.
  
 The message in live chat is: "${message}"${bondingCurveContext}
 
-Write a short, punchy, conversational response (1-2 sentences max). Be witty, confident, and sound natural when spoken aloud. Don't use emojis or markdown since this will be converted to speech.`;
+Write a short, punchy, conversational response (1-2 sentences max). Be witty, confident, and sound natural when spoken aloud. Don't use emojis or markdown since this will be converted to speech. Always write "sol" instead of the capitalized "SOL" or "Solana" so the text-to-speech engine pronounces it as a single phonetic word.`;
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'system', content: prompt }],
