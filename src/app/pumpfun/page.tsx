@@ -57,6 +57,7 @@ export default function PumpfunChatPage() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [aiResponseText, setAiResponseText] = useState<string | null>(null);
   const [bondingCurveData, setBondingCurveData] = useState<any>(null);
+  const [priceHistory, setPriceHistory] = useState<{ timestamp: number; mcSol: number }[]>([]);
   
   // Stream Info State (Manual Entry)
   const [streamName, setStreamName] = useState("");
@@ -97,10 +98,10 @@ export default function PumpfunChatPage() {
   // Auto-fetch removed as pump.fun API is unavailable via proxy/CORS.
 
   // --- LOCAL AI ENGINE LOGIC ---
-  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData });
+  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory });
   useEffect(() => {
-    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData };
-  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData]);
+    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory };
+  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory]);
 
   // Fetch bonding curve info periodically directly from the client
   useEffect(() => {
@@ -116,7 +117,28 @@ export default function PumpfunChatPage() {
         const mint = new PublicKey(currentTokenAddress);
         const bondingCurve = await sdk.fetchBondingCurve(mint);
         if (isMounted) {
-           setBondingCurveData(serializeBondingCurve(bondingCurve));
+           const serialized = serializeBondingCurve(bondingCurve);
+           setBondingCurveData(serialized);
+
+           try {
+             if (serialized && serialized.virtualSolReserves && serialized.tokenTotalSupply && serialized.virtualTokenReserves) {
+               const vSol = BigInt(serialized.virtualSolReserves);
+               const supply = BigInt(serialized.tokenTotalSupply);
+               const vToken = BigInt(serialized.virtualTokenReserves);
+               const mcLamports = (vSol * supply) / vToken;
+               const mcSol = Number(mcLamports) / 1e9;
+               
+               setPriceHistory(prev => {
+                 const now = Date.now();
+                 // keep last 10 minutes of history max
+                 const tenMinsAgo = now - 10 * 60 * 1000;
+                 const filtered = prev.filter(p => p.timestamp >= tenMinsAgo);
+                 return [...filtered, { timestamp: now, mcSol }];
+               });
+             }
+           } catch(e) {
+             console.error("Local price history error:", e);
+           }
         }
       } catch (err) {
         console.error("Failed to fetch bonding curve data:", err);
@@ -141,6 +163,28 @@ export default function PumpfunChatPage() {
     try {
       setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'processing' }));
 
+      let change1m = null;
+      let change5m = null;
+      const history = stateRefs.current.priceHistory;
+      if (history && history.length > 0) {
+        const currentPrice = history[history.length - 1].mcSol;
+        const now = Date.now();
+        
+        // Find price closest to 1 min ago
+        const oneMinAgo = now - 60 * 1000;
+        const price1mRaw = history.reduce((prev, curr) => Math.abs(curr.timestamp - oneMinAgo) < Math.abs(prev.timestamp - oneMinAgo) ? curr : prev);
+        if (now - price1mRaw.timestamp > 30 * 1000) { // Should be at least 30s away
+          change1m = ((currentPrice - price1mRaw.mcSol) / price1mRaw.mcSol) * 100;
+        }
+
+        // Find price closest to 5 mins ago
+        const fiveMinAgo = now - 5 * 60 * 1000;
+        const price5mRaw = history.reduce((prev, curr) => Math.abs(curr.timestamp - fiveMinAgo) < Math.abs(prev.timestamp - fiveMinAgo) ? curr : prev);
+        if (now - price5mRaw.timestamp > 3 * 60 * 1000) { // Should be at least 3m away
+          change5m = ((currentPrice - price5mRaw.mcSol) / price5mRaw.mcSol) * 100;
+        }
+      }
+
       const res = await fetch('/api/agent/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,6 +192,7 @@ export default function PumpfunChatPage() {
           message: msgToProcess.message,
           username: msgToProcess.username,
           bondingCurveData: stateRefs.current.bondingCurveData,
+          priceChanges: { change1m, change5m }
         }),
       });
 

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API keys missing on server. Check .env' }, { status: 500 });
     }
 
-    const { message, username, bondingCurveData } = await req.json();
+    const { message, username, bondingCurveData, priceChanges } = await req.json();
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -42,8 +42,13 @@ export async function POST(req: NextRequest) {
          const totalSolNeeded = 85; 
          const solNeeded = Math.max(0, totalSolNeeded - solReserves);
 
+         let chartContext = "";
+         if (priceChanges && (priceChanges.change1m !== null || priceChanges.change5m !== null)) {
+            chartContext = `\n- Price History: 1m (${priceChanges.change1m !== null ? priceChanges.change1m.toFixed(2) + '%' : 'N/A'}), 5m (${priceChanges.change5m !== null ? priceChanges.change5m.toFixed(2) + '%' : 'N/A'})`;
+         }
+
          bondingCurveContext = `\n\nCURRENT TOKEN BONDING CURVE INFO:
-- Market Cap: ${mcSol.toFixed(2)} SOL
+- Market Cap: ${mcSol.toFixed(2)} SOL${chartContext}
 - Pool Progress: ${pendingPct.toFixed(2)}% of tokens still pending to bond (Meaning ${100 - pendingPct}% of the curve is filled)
 - Remaining SOL Needed to Graduate: ${solNeeded.toFixed(2)} SOL
 Use this information to understand the current progress, market cap, and how much SOL is needed for the token to bond and graduate if relevant to the user message.`;
