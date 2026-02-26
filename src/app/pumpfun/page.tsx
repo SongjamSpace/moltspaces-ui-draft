@@ -88,20 +88,26 @@ const BAR_DECAY = 0.88; // when speech ends, bar levels decay toward wave per fr
 
 function BondingCurveVisualizer({
   bondingCurveData,
+  isBondedToken,
+  currentMcSol,
+  solUsdPrice,
   isPlayingTTS,
   audioAnalyzerRef,
 }: {
   bondingCurveData: any;
+  isBondedToken: boolean;
+  currentMcSol: number | null;
+  solUsdPrice: number | null;
   isPlayingTTS: boolean;
   audioAnalyzerRef: React.MutableRefObject<{ analyser: AnalyserNode; data: Uint8Array } | null>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevBarLevelsRef = useRef<Float32Array | null>(null);
   const prevSpeechLevelRef = useRef<number>(0);
-  const progress = getBondingProgressPercent(bondingCurveData);
+  const progress = isBondedToken ? 100 : getBondingProgressPercent(bondingCurveData);
   const solInCurve = getSolInCurve(bondingCurveData);
-  const isComplete = !!bondingCurveData?.complete;
-  const hasData = progress !== null && solInCurve !== null;
+  const isComplete = isBondedToken || !!bondingCurveData?.complete;
+  const hasData = isBondedToken || (progress !== null && solInCurve !== null);
 
   const progressNorm = hasData ? progress! / 100 : 0;
   const size = VISUALIZER_SIZE;
@@ -373,11 +379,11 @@ function BondingCurveVisualizer({
             left: 0,
           }}
         >
-          {!bondingCurveData ? (
+          {(!hasData && !currentMcSol) ? (
             <p className="text-sm text-cyan-400/80 text-center px-4 font-medium">Connect a token</p>
-          ) : hasData ? (
+          ) : (
             <>
-              {bondingCurveData.realTokenReserves != null && (
+              {hasData && progressNorm < 1 && bondingCurveData?.realTokenReserves != null && (
                 <>
                   <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Pending</span>
                   <span className="text-[1.75rem] sm:text-3xl font-black tabular-nums text-transparent bg-clip-text bg-gradient-to-b from-cyan-300 to-fuchsia-400">
@@ -389,23 +395,25 @@ function BondingCurveVisualizer({
                   </span>
                 </>
               )}
-              {bondingCurveData.virtualSolReserves && bondingCurveData.tokenTotalSupply && bondingCurveData.virtualTokenReserves && (
+              {isBondedToken && (
+                <span className="text-xs sm:text-sm font-mono text-cyan-400 uppercase tracking-wider font-bold mb-1">Bonded on Raydium</span>
+              )}
+              {currentMcSol !== null && currentMcSol > 0 && (
                 <>
                   <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider mt-2">Market Cap</span>
-                  <span className="text-xs sm:text-sm font-bold tabular-nums text-white">
-                    {(() => {
-                      const vSol = BigInt(bondingCurveData.virtualSolReserves);
-                      const supply = BigInt(bondingCurveData.tokenTotalSupply);
-                      const vToken = BigInt(bondingCurveData.virtualTokenReserves);
-                      const mcLamports = (vSol * supply) / vToken;
-                      return `${(Number(mcLamports) / 1e9).toFixed(2)} SOL`;
-                    })()}
-                  </span>
+                  <div className="flex flex-col items-center leading-tight mt-1">
+                    <span className="text-xs sm:text-sm font-bold tabular-nums text-white">
+                      {currentMcSol.toFixed(2)} SOL
+                    </span>
+                    {solUsdPrice && (
+                      <span className="text-[10px] sm:text-[11px] font-mono tabular-nums text-green-400 mt-0.5">
+                        ${(currentMcSol * solUsdPrice).toLocaleString('en-US', {maximumFractionDigits:0})}
+                      </span>
+                    )}
+                  </div>
                 </>
               )}
             </>
-          ) : (
-            <p className="text-xs text-cyan-400/70">Loading…</p>
           )}
         </div>
       </div>
@@ -426,6 +434,8 @@ export default function PumpfunChatPage() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [aiResponseText, setAiResponseText] = useState<string | null>(null);
   const [bondingCurveData, setBondingCurveData] = useState<any>(null);
+  const [isBondedToken, setIsBondedToken] = useState<boolean>(false);
+  const [solUsdPrice, setSolUsdPrice] = useState<number | null>(null);
   const [priceHistory, setPriceHistory] = useState<{ timestamp: number; mcSol: number }[]>([]);
   
   // Stream Info State (Manual Entry)
@@ -471,10 +481,32 @@ export default function PumpfunChatPage() {
   // Auto-fetch removed as pump.fun API is unavailable via proxy/CORS.
 
   // --- LOCAL AI ENGINE LOGIC ---
-  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName });
+  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice });
   useEffect(() => {
-    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName };
-  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName]);
+    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice };
+  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice]);
+
+  // Fetch Sol USD Price
+  useEffect(() => {
+    const fetchSolPrice = async () => {
+      try {
+        // Jupiter v2 requires API keys for some origins now. Using Coingecko as a reliable alternative for simple price checks.
+        const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+        if (res.ok) {
+           const data = await res.json();
+           const price = data.solana?.usd;
+           if (price) {
+             setSolUsdPrice(parseFloat(price));
+           }
+        }
+      } catch (err) {
+        console.error("Failed to fetch SOL price", err);
+      }
+    };
+    fetchSolPrice();
+    const interval = setInterval(fetchSolPrice, 60000); // 1 minute
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch bonding curve info periodically directly from the client
   useEffect(() => {
@@ -488,19 +520,62 @@ export default function PumpfunChatPage() {
     const fetchBondingCurve = async () => {
       try {
         const mint = new PublicKey(currentTokenAddress);
-        const bondingCurve = await sdk.fetchBondingCurve(mint);
+        let bondingCurve = null;
+        try {
+          bondingCurve = await sdk.fetchBondingCurve(mint);
+        } catch (e) {
+          // might fail if token bonded and curve account is closed
+        }
+
+        let isBonded = false;
+        let serialized = null;
+
+        if (bondingCurve) {
+           serialized = serializeBondingCurve(bondingCurve);
+           isBonded = serialized.complete || (serialized.virtualTokenReserves && BigInt(serialized.virtualTokenReserves) === BigInt(0));
+        } else {
+           isBonded = true; // assume bonded if SDK fails to find the curve account
+        }
+
         if (isMounted) {
-           const serialized = serializeBondingCurve(bondingCurve);
            setBondingCurveData(serialized);
+           setIsBondedToken(isBonded);
 
            try {
-             if (serialized && serialized.virtualSolReserves && serialized.tokenTotalSupply && serialized.virtualTokenReserves) {
+             let mcSol = 0;
+             if (!isBonded && serialized && serialized.virtualSolReserves && serialized.tokenTotalSupply && serialized.virtualTokenReserves) {
                const vSol = BigInt(serialized.virtualSolReserves);
                const supply = BigInt(serialized.tokenTotalSupply);
                const vToken = BigInt(serialized.virtualTokenReserves);
-               const mcLamports = (vSol * supply) / vToken;
-               const mcSol = Number(mcLamports) / 1e9;
-               
+               if (vToken > BigInt(0)) {
+                 const mcLamports = (vSol * supply) / vToken;
+                 mcSol = Number(mcLamports) / 1e9;
+               } else {
+                 isBonded = true;
+               }
+             }
+             
+             if (isBonded) {
+               // Token has bonded or doesn't have pump curve data, fetch from DexScreener
+               try {
+                 const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${currentTokenAddress}`);
+                 if (dexRes.ok) {
+                   const dexData = await dexRes.json();
+                   if (dexData.pairs && dexData.pairs.length > 0) {
+                     // Raydium pair for memecoins is usually first
+                     const pair = dexData.pairs.find((p: any) => p.dexId === 'raydium') || dexData.pairs[0];
+                     if (pair && pair.priceNative) {
+                       mcSol = parseFloat(pair.priceNative) * 1_000_000_000;
+                     }
+                   }
+                 }
+               } catch (e) {
+                 console.error("Dexscreener fetch error:", e);
+               }
+               setIsBondedToken(true);
+             }
+
+             if (mcSol > 0) {
                setPriceHistory(prev => {
                  const now = Date.now();
                  // keep last 10 minutes of history max
@@ -514,7 +589,7 @@ export default function PumpfunChatPage() {
            }
         }
       } catch (err) {
-        console.error("Failed to fetch bonding curve data:", err);
+        console.error("General error in fetchBondingCurve routine:", err);
       }
     };
 
@@ -565,8 +640,10 @@ export default function PumpfunChatPage() {
           message: msgToProcess.message,
           username: msgToProcess.username,
           bondingCurveData: stateRefs.current.bondingCurveData,
-          priceChanges: { change1m, change5m },
-          streamName: stateRefs.current.streamName
+          priceChanges: { change1m, change5m, currentMcSol: history.length > 0 ? history[history.length - 1].mcSol : null },
+          streamName: stateRefs.current.streamName,
+          isBondedToken: stateRefs.current.isBondedToken,
+          solUsdPrice: stateRefs.current.solUsdPrice
         }),
       });
 
@@ -820,6 +897,8 @@ export default function PumpfunChatPage() {
     setAiResponseText(null);
     setStreamName("");
     setStreamSymbol("");
+    setIsBondedToken(false);
+    setPriceHistory([]);
     // messageStatuses and aiReplies intentionally kept to persist data
   };
 
@@ -942,6 +1021,9 @@ export default function PumpfunChatPage() {
           <div className="flex-1 flex flex-col items-center justify-center relative z-10 px-4 py-6 min-h-0">
             <BondingCurveVisualizer
               bondingCurveData={bondingCurveData}
+              isBondedToken={isBondedToken}
+              currentMcSol={priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].mcSol : null}
+              solUsdPrice={solUsdPrice}
               isPlayingTTS={isPlayingTTS}
               audioAnalyzerRef={audioAnalyzerRef}
             />
