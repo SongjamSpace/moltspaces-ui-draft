@@ -9,7 +9,7 @@ const openai = new OpenAI({
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 // Rachel voice ID as default fallback
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || '2OyUN7t1fAjE0sHaYPNA';
+const VOICE_ID = 'PB6BdkFkZLbI39GHdnbQ';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     const { message, username, bondingCurveData, priceChanges, streamName } = await req.json();
 
-    const agentName = streamName?.trim() || "Claw Talk";
+    const agentName = streamName?.trim() || "Eve";
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -53,20 +53,20 @@ export async function POST(req: NextRequest) {
 - Market Cap: ${mcSol.toFixed(2)} sol${chartContext}
 - Pool Progress: ${pendingPct.toFixed(2)}% of tokens still pending to bond (Meaning ${100 - pendingPct}% of the curve is filled)
 - Remaining sol Needed to Graduate: ${solNeeded.toFixed(2)} sol
-Use this information to understand the current progress, market cap, and how much sol is needed for the token to bond and graduate if relevant to the user message.`;
+Use this information to understand the current progress, market cap, and how much sol is needed for the token to bond and graduate. No need to mention the amount required to graduate in SOL terms - only in terms of the percetage left to graduate, or the percentage already achieved.`;
       }
     }
 
     // 1. Generate text response with OpenAI
-    const prompt = `You are ${agentName}, a cocky and fun-loving talking AI Agent on the moltspaces platform, which is live streamed on pump fun and can be interacted with via pump fun chat - it has witty takes on the overall crypto space and it's place in it
+    const prompt = `You are ${agentName}, a helpful and flirty AI assistant dedicated to encouraging pump fun chatters to buy the token and help it graduate and bond - using as much sexual innuendos as possible
 
 This inherits the same deflationary principles as outlined for agent tokens in the Songjam whitepaper - i.e. in the future you can purchase the token supply and it is burnt off per LLM token which is spoken - but for now it's just a free access via pump fun exclusively
 
 It is able to collect responses about paying the DEX and pass it on to the agent deployer, but for safety reasons (the recent case of Lobstar Wilde who accidently sent $250k-$440k of a memecoin because of a twitter request) it does not currently have access to it's own wallet. It is able to be updated once the DEX is paid and inform the pump fun chatters and the Dex will be paid after the token bonds
 
-It generally has a bullish take on it's future as part of the broader moltspaces ecosystem, but does not specifically offer financial advice about future price or anything like that
+It generally has a bullish take on it's future, but does not specifically offer financial advice about future price or anything like that
 
-It is also launching a token called ${agentName} and when it hears a price in the message, react accordingly as we want to reach $33k to graduate and bond in pumpfun.
+It is also launching a token called ${agentName} and when it hears a price in the message, react accordingly as we want to reach 85 SOL to graduate and bond in pumpfun.
  
 The message in live chat is: "${message}"${bondingCurveContext}
 

@@ -48,6 +48,371 @@ function serializeBondingCurve(bc: any): any {
 
 // Interface is imported from pumpChatClient
 
+const BONDING_TARGET_SOL = 85;
+
+/** Progress (0–100) towards bonding curve graduation (85 SOL). Uses virtualSolReserves. */
+function getBondingProgressPercent(bondingCurveData: any): number | null {
+  if (!bondingCurveData?.virtualSolReserves) return null;
+  try {
+    const vSol = BigInt(bondingCurveData.virtualSolReserves);
+    const solInCurve = Number(vSol) / 1e9;
+    if (bondingCurveData.complete) return 100;
+    return Math.min(100, (solInCurve / BONDING_TARGET_SOL) * 100);
+  } catch {
+    return null;
+  }
+}
+
+function getSolInCurve(bondingCurveData: any): number | null {
+  if (!bondingCurveData?.virtualSolReserves) return null;
+  try {
+    const vSol = BigInt(bondingCurveData.virtualSolReserves);
+    return Number(vSol) / 1e9;
+  } catch {
+    return null;
+  }
+}
+
+const NUM_BARS = 192;
+const INNER_RADIUS_BASE = 42;
+const MAX_BAR_LENGTH_BASE = 58;
+const BAR_WIDTH_BASE = 1.6;
+const OUTER_RING_OFFSET = 0.5;
+const MID_RING_OFFSET = 0.25;
+const NUM_PARTICLES = 52;
+const VISUALIZER_SIZE = 560;
+
+const SMOOTHING = 0.55; // temporal smoothing: higher = smoother, less jitter
+const SPEECH_DECAY = 0.92; // when speech ends, level decays per frame (smooth fade-out)
+const BAR_DECAY = 0.88; // when speech ends, bar levels decay toward wave per frame
+
+function BondingCurveVisualizer({
+  bondingCurveData,
+  isPlayingTTS,
+  audioAnalyzerRef,
+}: {
+  bondingCurveData: any;
+  isPlayingTTS: boolean;
+  audioAnalyzerRef: React.MutableRefObject<{ analyser: AnalyserNode; data: Uint8Array } | null>;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const prevBarLevelsRef = useRef<Float32Array | null>(null);
+  const prevSpeechLevelRef = useRef<number>(0);
+  const progress = getBondingProgressPercent(bondingCurveData);
+  const solInCurve = getSolInCurve(bondingCurveData);
+  const isComplete = !!bondingCurveData?.complete;
+  const hasData = progress !== null && solInCurve !== null;
+
+  const progressNorm = hasData ? progress! / 100 : 0;
+  const size = VISUALIZER_SIZE;
+  const scale = size / 340;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let frameId: number;
+    let startTime = performance.now();
+
+    const draw = () => {
+      const t = (performance.now() - startTime) * 0.001;
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      const INNER_RADIUS = INNER_RADIUS_BASE * scale;
+      const MAX_BAR_LENGTH = MAX_BAR_LENGTH_BASE * scale;
+      const BAR_WIDTH = BAR_WIDTH_BASE * scale;
+      const midRingRadius = INNER_RADIUS + MAX_BAR_LENGTH * 0.45;
+      const outerRingRadius = INNER_RADIUS + MAX_BAR_LENGTH + 8;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Real-time audio: get frequency data, symmetric mapping, temporal smoothing
+      const analyzer = audioAnalyzerRef.current;
+      const speed = isPlayingTTS ? 3.5 : 1.3;
+      let speechLevel = 0;
+      const barAudioLevels = new Float32Array(NUM_BARS);
+      const AUDIO_GAIN = 2.2;
+      if (analyzer) {
+        analyzer.analyser.getByteFrequencyData(analyzer.data);
+        const freq = analyzer.data;
+        let sum = 0;
+        for (let j = 0; j < freq.length; j++) sum += freq[j];
+        const rawSpeech = Math.min(1, (sum / (freq.length * 255)) * 1.8);
+        speechLevel = prevSpeechLevelRef.current * SMOOTHING + rawSpeech * (1 - SMOOTHING);
+        prevSpeechLevelRef.current = speechLevel;
+        for (let i = 0; i < NUM_BARS; i++) {
+          const pos = i / NUM_BARS;
+          const spectrumT = pos <= 0.5 ? pos * 2 : (1 - pos) * 2;
+          const binExact = spectrumT * (freq.length - 1);
+          const binIndex = Math.floor(binExact);
+          const nextBin = Math.min(binIndex + 1, freq.length - 1);
+          const frac = binExact - binIndex;
+          const v = freq[binIndex] * (1 - frac) + freq[nextBin] * frac;
+          const raw = Math.min(1, (v / 255) * AUDIO_GAIN);
+          barAudioLevels[i] = prevBarLevelsRef.current
+            ? prevBarLevelsRef.current[i] * SMOOTHING + raw * (1 - SMOOTHING)
+            : raw;
+        }
+        prevBarLevelsRef.current = barAudioLevels.slice();
+      } else {
+        // Smooth fade-out: decay speech level and morph bars toward wave
+        speechLevel = prevSpeechLevelRef.current * SPEECH_DECAY;
+        prevSpeechLevelRef.current = speechLevel;
+        for (let i = 0; i < NUM_BARS; i++) {
+          const wave1 = Math.sin(t * speed * 2 + i * 0.32) * 0.5 + 0.5;
+          const wave2 = Math.sin(t * speed * 1.4 + i * 0.18) * 0.4 + 0.5;
+          const wave3 = Math.sin(t * speed * 3.2 + i * 0.48) * 0.35 + 0.5;
+          const wave4 = Math.sin(t * speed * 0.9 + i * 0.25) * 0.25 + 0.5;
+          const wave = (wave1 + wave2 + wave3 + wave4) / 4;
+          barAudioLevels[i] = prevBarLevelsRef.current
+            ? prevBarLevelsRef.current[i] * BAR_DECAY + wave * (1 - BAR_DECAY)
+            : wave;
+        }
+        prevBarLevelsRef.current = barAudioLevels.slice();
+      }
+
+      const baseLevel = progressNorm * 0.88 + 0.06;
+      const ttsBoost = speechLevel * 1.8;
+
+      // ---- 1) TTS burst rings (scaled) - fade with speechLevel ----
+      if (speechLevel > 0.015) {
+        for (let b = 0; b < 5; b++) {
+          const phase = (t * 2.8 + b * 0.2) % 1;
+          const r = (22 + phase * 100) * scale;
+          const alpha = (1 - phase) * 0.7 * Math.min(1, speechLevel * 1.5);
+          ctx.strokeStyle = `rgba(0, 245, 255, ${alpha})`;
+          ctx.lineWidth = Math.max(2, 3 * scale);
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // ---- 2) Orbiting particles (scaled, more of them) ----
+      for (let p = 0; p < NUM_PARTICLES; p++) {
+        const orbitAngle = t * 0.8 + p * 0.22 + (p % 3) * 0.7;
+        const orbitRadius = (18 + (p % 5) * 12 + progressNorm * 10) * scale;
+        const px = cx + Math.cos(orbitAngle) * orbitRadius;
+        const py = cy + Math.sin(orbitAngle) * orbitRadius;
+        const pulse = 0.5 + 0.5 * Math.sin(t * 4 + p * 0.5);
+        const speechBoost = 0.2 + speechLevel * 1.1;
+        const particleAlpha = Math.min(1, (0.3 + progressNorm * 0.3 + speechBoost) * pulse);
+        const particleSize = (1.4 + (p % 2) * 0.6 + speechLevel * 1.6) * scale;
+        const hueP = (260 + progressNorm * 80 + p * 3) % 360;
+        ctx.fillStyle = `hsla(${hueP}, 90%, 75%, ${particleAlpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // ---- 3) Center radar sweep ----
+      const sweepAngle = (t * 0.6) % (Math.PI * 2);
+      const sweepWidth = 0.22 * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, INNER_RADIUS + 6, sweepAngle, sweepAngle + sweepWidth);
+      ctx.closePath();
+      const sweepGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, INNER_RADIUS + 6);
+      sweepGrad.addColorStop(0, "rgba(0, 245, 255, 0.25)");
+      sweepGrad.addColorStop(0.6, "rgba(180, 0, 255, 0.06)");
+      sweepGrad.addColorStop(1, "rgba(0, 245, 255, 0)");
+      ctx.fillStyle = sweepGrad;
+      ctx.fill();
+
+      // ---- 4) Bar rings: always use barAudioLevels (smooth transition speech ↔ wave) ----
+      const hue = (238 + progressNorm * 100 + (speechLevel > 0.05 ? Math.sin(t * 2.5) * 35 : 0)) % 360;
+      const sat = 92;
+      const drawBar = (
+        fromX: number, fromY: number, toX: number, toY: number,
+        alpha: number, glowWidth: number, lightMod: number
+      ) => {
+        const light = 52 + lightMod;
+        const g = ctx.createLinearGradient(fromX, fromY, toX, toY);
+        g.addColorStop(0, `hsla(${hue}, ${sat}%, ${light}%, ${alpha * 0.5})`);
+        g.addColorStop(0.4, `hsla(${hue}, ${sat}%, 72%, ${alpha})`);
+        g.addColorStop(0.8, `hsla(${(hue + 55) % 360}, ${sat}%, 80%, ${alpha})`);
+        g.addColorStop(1, `hsla(${(hue + 70) % 360}, ${sat}%, 85%, ${alpha * 0.9})`);
+        ctx.strokeStyle = `hsla(${hue}, ${sat}%, 78%, ${alpha * 0.35})`;
+        ctx.lineWidth = BAR_WIDTH + glowWidth;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+        ctx.strokeStyle = g;
+        ctx.lineWidth = BAR_WIDTH;
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+      };
+
+      for (let i = 0; i < NUM_BARS; i++) {
+        const angle = (i / NUM_BARS) * Math.PI * 2 - Math.PI / 2;
+        const angleMid = angle + MID_RING_OFFSET * (Math.PI * 2 / NUM_BARS);
+        const angleOuter = angle + OUTER_RING_OFFSET * (Math.PI * 2 / NUM_BARS);
+
+        const wave1 = Math.sin(t * speed * 2 + i * 0.32) * 0.5 + 0.5;
+        const wave2 = Math.sin(t * speed * 1.4 + i * 0.18) * 0.4 + 0.5;
+        const wave3 = Math.sin(t * speed * 3.2 + i * 0.48) * 0.35 + 0.5;
+        const wave4 = Math.sin(t * speed * 0.9 + i * 0.25) * 0.25 + 0.5;
+        const wave = (wave1 + wave2 + wave3 + wave4) / 4;
+        const audioNorm = barAudioLevels[i];
+        const barBlend = 0.12 * wave + 0.88 * audioNorm;
+        const barLength = (baseLevel + barBlend * 0.85 + ttsBoost * 0.55) * MAX_BAR_LENGTH;
+        const barLengthClamped = Math.max(2, Math.min(MAX_BAR_LENGTH, barLength));
+
+        const waveM1 = Math.sin(t * speed * 2.1 + i * 0.33 + 0.9) * 0.5 + 0.5;
+        const waveM2 = Math.sin(t * speed * 1.35 + i * 0.19) * 0.4 + 0.5;
+        const waveM = (waveM1 + waveM2) / 2;
+        const midAudio = (barAudioLevels[i] + barAudioLevels[(i + 1) % NUM_BARS]) / 2;
+        const midBlend = 0.1 * waveM + 0.9 * midAudio;
+        const midLen = (baseLevel * 0.8 + midBlend * 0.8 + ttsBoost * 0.5) * (MAX_BAR_LENGTH * 0.55);
+        const midLenClamped = Math.max(2, Math.min(MAX_BAR_LENGTH * 0.55, midLen));
+
+        const waveO1 = Math.sin(t * speed * 2.3 + i * 0.35 + 1.5) * 0.5 + 0.5;
+        const waveO2 = Math.sin(t * speed * 1.15 + i * 0.21 + 0.8) * 0.4 + 0.5;
+        const waveO = (waveO1 + waveO2) / 2;
+        const outerBlend = 0.1 * waveO + 0.9 * barAudioLevels[(i + 2) % NUM_BARS];
+        const outerBarMax = 24 * scale;
+        const barLengthOuter = (baseLevel * 0.6 + outerBlend * 0.75 + ttsBoost * 0.5) * outerBarMax;
+        const barLengthOuterClamped = Math.max(2, Math.min(outerBarMax, barLengthOuter));
+
+        const lightMod = audioNorm * 35;
+
+        const innerX = cx + Math.cos(angle) * INNER_RADIUS;
+        const innerY = cy + Math.sin(angle) * INNER_RADIUS;
+        const outerX = cx + Math.cos(angle) * (INNER_RADIUS + barLengthClamped);
+        const outerY = cy + Math.sin(angle) * (INNER_RADIUS + barLengthClamped);
+        drawBar(innerX, innerY, outerX, outerY, 1, 10, lightMod);
+
+        const midStartX = cx + Math.cos(angleMid) * midRingRadius;
+        const midStartY = cy + Math.sin(angleMid) * midRingRadius;
+        const midEndX = cx + Math.cos(angleMid) * (midRingRadius + midLenClamped);
+        const midEndY = cy + Math.sin(angleMid) * (midRingRadius + midLenClamped);
+        drawBar(midStartX, midStartY, midEndX, midEndY, 0.88, 7, lightMod * 0.9);
+
+        const outerStartX = cx + Math.cos(angleOuter) * outerRingRadius;
+        const outerStartY = cy + Math.sin(angleOuter) * outerRingRadius;
+        const outerEndX = cx + Math.cos(angleOuter) * (outerRingRadius + barLengthOuterClamped);
+        const outerEndY = cy + Math.sin(angleOuter) * (outerRingRadius + barLengthOuterClamped);
+        drawBar(outerStartX, outerStartY, outerEndX, outerEndY, 0.78, 6, lightMod * 0.8);
+      }
+
+      // ---- 5) Inner core glow: much brighter with speech ----
+      const circleGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, INNER_RADIUS + 22);
+      circleGrad.addColorStop(0, `rgba(0, 245, 255, ${0.12 + speechLevel * 0.5})`);
+      circleGrad.addColorStop(0.5, `rgba(160, 0, 255, ${0.04 + speechLevel * 0.12})`);
+      circleGrad.addColorStop(1, "rgba(0, 245, 255, 0)");
+      ctx.fillStyle = circleGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, INNER_RADIUS + 28, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ---- 6) Outer halo (scaled) - fade with speechLevel ----
+      if (speechLevel > 0.01) {
+        const haloAlpha = 0.08 + 0.22 * speechLevel * (0.8 + 0.4 * Math.sin(t * 5));
+        ctx.strokeStyle = `rgba(0, 245, 255, ${Math.min(1, haloAlpha)})`;
+        ctx.lineWidth = Math.max(3, 4 * scale);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 132 * scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // ---- 7) Rotating dashed "energy" ring for extra motion ----
+      const dashAngle = (t * 0.4) % (Math.PI * 2);
+      ctx.strokeStyle = `rgba(0, 245, 255, ${0.06 + 0.04 * Math.sin(t * 2)})`;
+      ctx.lineWidth = 1.5 * scale;
+      ctx.setLineDash([4 * scale, 8 * scale]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerRingRadius + 15 * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      frameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => cancelAnimationFrame(frameId);
+  }, [progressNorm, isPlayingTTS, isComplete, audioAnalyzerRef]);
+
+  return (
+    <div className="relative mb-8 flex flex-col items-center">
+      <div
+        className="relative rounded-full overflow-visible transition-all duration-500"
+        style={{
+          width: size,
+          height: size,
+          filter: isPlayingTTS
+            ? "drop-shadow(0 0 45px rgba(0,245,255,0.5)) drop-shadow(0 0 90px rgba(180,0,255,0.2))"
+            : "drop-shadow(0 0 32px rgba(160,0,255,0.3)) drop-shadow(0 0 60px rgba(0,200,255,0.1))",
+          transform: isPlayingTTS ? "scale(1.02)" : "scale(1)",
+        }}
+      >
+        <canvas
+          ref={canvasRef}
+          width={size}
+          height={size}
+          className="block w-full h-full rounded-full"
+          style={{ background: "transparent" }}
+        />
+        {/* Center overlay: dark only in center so bars show at edges */}
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none rounded-full"
+          style={{
+            background: "radial-gradient(circle at center, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.4) 28%, transparent 55%)",
+            width: size,
+            height: size,
+            top: 0,
+            left: 0,
+          }}
+        >
+          {!bondingCurveData ? (
+            <p className="text-sm text-cyan-400/80 text-center px-4 font-medium">Connect a token</p>
+          ) : hasData ? (
+            <>
+              {bondingCurveData.realTokenReserves != null && (
+                <>
+                  <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Pending</span>
+                  <span className="text-[1.75rem] sm:text-3xl font-black tabular-nums text-transparent bg-clip-text bg-gradient-to-b from-cyan-300 to-fuchsia-400">
+                    {(() => {
+                      const currentTokens = BigInt(bondingCurveData.realTokenReserves);
+                      const initialTokens = BigInt("793100000000000");
+                      return `${(Number((currentTokens * BigInt("10000")) / initialTokens) / 100).toFixed(1)}%`;
+                    })()}
+                  </span>
+                </>
+              )}
+              {bondingCurveData.virtualSolReserves && bondingCurveData.tokenTotalSupply && bondingCurveData.virtualTokenReserves && (
+                <>
+                  <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider mt-2">Market Cap</span>
+                  <span className="text-xs sm:text-sm font-bold tabular-nums text-white">
+                    {(() => {
+                      const vSol = BigInt(bondingCurveData.virtualSolReserves);
+                      const supply = BigInt(bondingCurveData.tokenTotalSupply);
+                      const vToken = BigInt(bondingCurveData.virtualTokenReserves);
+                      const mcLamports = (vSol * supply) / vToken;
+                      return `${(Number(mcLamports) / 1e9).toFixed(2)} SOL`;
+                    })()}
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-cyan-400/70">Loading…</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PumpfunChatPage() {
   const [addressInput, setAddressInput] = useState("");
   const [username, setUsername] = useState("");
@@ -73,6 +438,10 @@ export default function PumpfunChatPage() {
   
   // Track last played timestamp to avoid replaying the same broadcast
   const lastPlayedTimestampRef = useRef<number>(0);
+
+  // Web Audio API: analyser + frequency data for speech-synced visualizer
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioAnalyzerRef = useRef<{ analyser: AnalyserNode; data: Uint8Array } | null>(null);
 
   const clientRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -210,16 +579,51 @@ export default function PumpfunChatPage() {
       setAiReplies(prev => ({ ...prev, [msgToProcess.id]: data.text }));
       
       if (data.audio) {
-        // Play locally
-        const audio = new Audio(data.audio);
-        audio.onended = () => {
-          setIsPlayingTTS(false);
-          setActiveMessageId(null);
-          setAiResponseText(null);
-        };
-        await audio.play();
-        // Mark as successfully answered locally
-        setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
+        // Play through Web Audio API so visualizer can read real-time frequency data
+        try {
+          const ctx = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
+          if (!audioContextRef.current) audioContextRef.current = ctx;
+          if (ctx.state === "suspended") await ctx.resume();
+
+          const res = await fetch(data.audio);
+          const arrayBuffer = await res.arrayBuffer();
+          const buffer = await ctx.decodeAudioData(arrayBuffer);
+
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
+
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.7;
+          analyser.minDecibels = -75;
+          analyser.maxDecibels = -5;
+
+          source.connect(analyser);
+          analyser.connect(ctx.destination);
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          audioAnalyzerRef.current = { analyser, data: dataArray };
+
+          source.start(0);
+          source.onended = () => {
+            audioAnalyzerRef.current = null;
+            setIsPlayingTTS(false);
+            setActiveMessageId(null);
+            setAiResponseText(null);
+          };
+          setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
+        } catch (err) {
+          console.warn("Web Audio playback failed, falling back to HTML Audio", err);
+          audioAnalyzerRef.current = null;
+          const audio = new Audio(data.audio);
+          audio.onended = () => {
+            setIsPlayingTTS(false);
+            setActiveMessageId(null);
+            setAiResponseText(null);
+          };
+          await audio.play();
+          setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
+        }
       } else {
         // Fallback if no audio was generated
         setTimeout(() => {
@@ -407,6 +811,7 @@ export default function PumpfunChatPage() {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    audioAnalyzerRef.current = null;
     setIsConnected(false);
     setIsConnecting(false);
     setMessages([]);
@@ -419,233 +824,179 @@ export default function PumpfunChatPage() {
   };
 
   return (
-    <div className="h-screen bg-[#0A0A0A] text-white flex flex-col font-sans selection:bg-red-500/30 overflow-hidden">
-      {/* Background gradients */}
+    <div className="h-screen bg-[#050508] text-white flex flex-col font-sans selection:bg-cyan-500/30 overflow-hidden">
+      {/* Full-bleed background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-600/20 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-600/20 blur-[120px] rounded-full" />
+        <div className="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-cyan-950/25 via-transparent to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-[50%] bg-gradient-to-t from-fuchsia-950/20 via-transparent to-transparent" />
+        <div className="absolute top-[-15%] left-[-5%] w-[50%] h-[50%] bg-cyan-600/15 blur-[140px] rounded-full" />
+        <div className="absolute bottom-[-15%] right-[-5%] w-[50%] h-[50%] bg-fuchsia-600/15 blur-[140px] rounded-full" />
       </div>
 
-      <header className="relative z-10 border-b border-white/10 bg-black/40 backdrop-blur-md px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/pumpfun.png" alt="Pumpfun Agent" className="w-9 h-9 rounded-xl object-contain bg-white/5" />
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-            Moltspaces <span className="text-red-400 ml-1">Live Agent</span>
+      {/* Compact header: branding + connect inline, gradient accent line */}
+      <header className="relative z-20 flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-3 bg-black/30 backdrop-blur-xl">
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/40 to-fuchsia-500/40" aria-hidden />
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/clawk.png" alt="EVE" className="w-10 h-10 rounded-xl object-contain bg-white/5 flex-shrink-0 ring-1 ring-white/10 shadow-sm" />
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight truncate">
+            <span className="bg-gradient-to-r from-white via-white to-gray-400 bg-clip-text text-transparent">EVE</span>
+            <span className="text-cyan-400 ml-1.5 font-semibold">Pump Assistant</span>
           </h1>
         </div>
-
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <div className="relative hidden sm:block w-48 lg:w-64">
+            <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+            <input
+              type="text"
+              value={addressInput}
+              onChange={(e) => setAddressInput(e.target.value)}
+              disabled={isConnected || isConnecting}
+              placeholder="Token address or URL"
+              className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/60 focus:border-cyan-500/50 transition-all disabled:opacity-50 placeholder:text-gray-500"
+            />
+          </div>
+          {!isConnected ? (
+            <button
+              onClick={() => handleConnect(false)}
+              disabled={isConnecting}
+              className="relative py-2.5 px-5 sm:px-6 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 rounded-xl font-semibold text-white transition-all duration-200 flex items-center justify-center gap-2 overflow-hidden border border-cyan-400/40 hover:border-cyan-300/60 active:scale-[0.98]"
+            >
+              <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent rounded-t-xl pointer-events-none opacity-0 hover:opacity-100 transition-opacity duration-200" aria-hidden />
+              {isConnecting ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Play className="w-4 h-4 relative z-10" />
+                  <span className="hidden sm:inline relative z-10">Start Agent</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={handleDisconnect}
+              className="py-2.5 px-5 sm:px-6 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 rounded-xl font-semibold text-cyan-400 transition-all flex items-center justify-center gap-2"
+            >
+              <Square className="w-4 h-4" />
+              <span className="hidden sm:inline">Stop</span>
+            </button>
+          )}
+        </div>
       </header>
 
-      <main className="flex-1 relative z-10 p-6 flex flex-col gap-6 max-w-7xl mx-auto w-full h-full pb-8 overflow-y-auto lg:overflow-hidden lg:pb-6">
-        
-        {/* Top bar with connection settings (compact) */}
-        <div className="flex-shrink-0 bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm shadow-xl flex flex-col items-center gap-4">
-          <div className="flex flex-col sm:flex-row w-full gap-4">
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <LinkIcon className="h-4 w-4 text-gray-500" />
-              </div>
-              <input
-                type="text"
-                value={addressInput}
-                onChange={(e) => setAddressInput(e.target.value)}
-                disabled={isConnected || isConnecting}
-                placeholder="Token Address or URL"
-                className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all disabled:opacity-50"
-              />
-            </div>
-
-            <div className="flex-shrink-0 w-full sm:w-auto">
-              {!isConnected ? (
-                <button
-                  onClick={() => handleConnect(false)}
-                  disabled={isConnecting}
-                  className="w-full sm:w-auto py-2 px-6 bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-400 hover:to-orange-500 disabled:from-red-500/50 disabled:to-orange-600/50 rounded-xl font-medium text-white shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2"
-                >
-                  {isConnecting ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4" />
-                      Start Agent
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleDisconnect}
-                  className="w-full sm:w-auto py-2 px-6 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl font-medium text-red-400 transition-all flex items-center justify-center gap-2"
-                >
-                  <Square className="w-4 h-4" />
-                  Stop Agent
-                </button>
-              )}
-            </div>
-          </div>
+      {/* Mobile: token input + error below header */}
+      <div className="sm:hidden relative z-10 px-4 py-2 space-y-2">
+        <div className="relative">
+          <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+          <input
+            type="text"
+            value={addressInput}
+            onChange={(e) => setAddressInput(e.target.value)}
+            disabled={isConnected || isConnecting}
+            placeholder="Token address or URL"
+            className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500"
+          />
         </div>
-
-
         {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-start gap-2">
-            <span className="block mt-0.5">•</span>
+          <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-cyan-400 text-xs flex items-start gap-2">
+            <span>•</span>
             <span>{error}</span>
           </div>
         )}
+      </div>
+      {error && (
+        <div className="hidden sm:block relative z-10 px-6 py-2">
+          <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-cyan-400 text-sm flex items-start gap-2 max-w-2xl">
+            <span>•</span>
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
 
-        {/* Main Content Area - Split Ratio 70/30 */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-[500px] lg:min-h-0">
-          
-          {/* AI Voice Agent - Dominant View */}
-          <div className="lg:w-[70%] bg-gradient-to-br from-red-950/40 to-black border border-red-500/20 rounded-3xl p-8 backdrop-blur-sm shadow-2xl flex flex-col relative overflow-hidden">
-            {/* Ambient background glow */}
-            <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-red-600/10 blur-[100px] rounded-full transition-opacity duration-1000 ${isPlayingTTS ? 'opacity-100' : 'opacity-30'}`} />
-
-            <div className="relative z-10 flex items-start justify-between mb-8">
-              <div className="flex items-center gap-4 w-full">
-                <div className="flex-1 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                     <input 
-                       type="text" 
-                       placeholder="Token Name (e.g. Claw Talk)"
-                       value={streamName}
-                       onChange={e => setStreamName(e.target.value)}
-                       className="bg-transparent text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent border-b border-transparent hover:border-white/20 focus:border-red-500/50 focus:outline-none transition-colors w-full sm:w-1/2 placeholder:text-gray-600"
-                     />
-                     <span className="text-sm font-medium px-2 py-0.5 bg-white/10 text-gray-300 rounded-md tracking-wider flex items-center">
-                       $ <input 
-                            type="text" 
-                            placeholder="TICKER"
-                            value={streamSymbol}
-                            onChange={e => setStreamSymbol(e.target.value.toUpperCase())}
-                            className="bg-transparent w-full max-w-[80px] focus:outline-none placeholder:text-gray-500"
-                          />
-                     </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-4 shrink-0 items-center">
-                {bondingCurveData && (
-                  <div className="flex items-center gap-4 bg-white/5 px-4 py-1.5 rounded-2xl border border-white/10">
-                    <div className="flex flex-col">
-                       <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Bonding Curve</span>
-                       <span className={`text-xs font-mono font-medium ${bondingCurveData.complete ? 'text-emerald-400' : 'text-orange-400'}`}>
-                          {bondingCurveData.complete ? 'COMPLETED' : 'IN PROGRESS'}
-                       </span>
-                    </div>
-                    {!bondingCurveData.complete && (
-                      <>
-                        <div className="w-px h-6 bg-white/10" />
-                        <div className="flex flex-col">
-                          <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Pending To Bond</span>
-                          <span className="text-xs font-mono text-gray-200">
-                            {bondingCurveData.realTokenReserves ? 
-                              (() => {
-                                const currentTokens = BigInt(bondingCurveData.realTokenReserves);
-                                const initialTokens = BigInt("793100000000000"); // 793.1M * 10^6
-                                const pendingPct = Number((currentTokens * BigInt("10000")) / initialTokens) / 100;
-                                return `${pendingPct.toFixed(2)}%`;
-                              })() : '--'}
-                          </span>
-                        </div>
-                        <div className="w-px h-6 bg-white/10" />
-                        <div className="flex flex-col">
-                          <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Market Cap</span>
-                          <span className="text-xs font-mono text-gray-200">
-                            {bondingCurveData.virtualSolReserves && bondingCurveData.tokenTotalSupply && bondingCurveData.virtualTokenReserves ? 
-                              (() => {
-                                const vSol = BigInt(bondingCurveData.virtualSolReserves);
-                                const supply = BigInt(bondingCurveData.tokenTotalSupply);
-                                const vToken = BigInt(bondingCurveData.virtualTokenReserves);
-                                const mcLamports = (vSol * supply) / vToken;
-                                const mcSol = Number(mcLamports) / 1e9;
-                                return `${mcSol.toFixed(2)} SOL`;
-                              })() : '--'}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex-1 flex flex-col items-center justify-center relative z-10 py-12">
-              <div className="relative mb-12">
-                {/* Visualizer rings */}
-                <div
-                  className={`absolute inset-[-40px] rounded-full border border-red-500/30 transition-all duration-700 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
-                />
-                <div
-                  className={`absolute inset-[-80px] rounded-full border border-orange-500/20 transition-all duration-1000 delay-150 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
-                />
-                <div
-                  className={`absolute inset-[-120px] rounded-full border border-red-500/10 transition-all duration-1000 delay-300 ease-out ${isPlayingTTS ? "scale-150 opacity-0" : "scale-100 opacity-100"}`}
-                />
-
-                <div
-                  className={`w-40 h-40 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(99,102,241,0.4)] transition-all duration-300 relative z-10 ${isPlayingTTS ? "scale-105 shadow-[0_0_80px_rgba(99,102,241,0.6)]" : ""}`}
-                >
-                  <motion.div animate={{ scale: isPlayingTTS ? [1, 1.2, 1] : 1 }} transition={{ repeat: isPlayingTTS ? Infinity : 0, duration: 2 }}>
-                    <img src="/pumpfun.png" alt="Clawk" className="w-26 h-26" />
-                  </motion.div>
-                </div>
-              </div>
-
-              <div className="h-24 flex flex-col items-center justify-center">
-                <AnimatePresence mode="wait">
-                  {isPlayingTTS && activeMessageId ? (
-                    <motion.div
-                      key="speaking"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="text-center"
-                    >
-                      <p className="text-xl text-white font-medium mb-4 flex items-center gap-3 justify-center">
-                        <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span>
-                        {aiResponseText ? "Speaking Response..." : "Generating Response..."}
-                      </p>
-                      
-                      {/* Show the message text being answered inline for extreme clarity */}
-                      <p className="text-gray-400 text-sm max-w-xl mx-auto italic border-l-2 border-red-500/30 pl-3 mb-4 line-clamp-2">
-                        User: "{messages.find(m => m.id === activeMessageId)?.message || "..."}"
-                      </p>
-
-                      {aiResponseText && (
-                        <p className="text-red-300 text-md max-w-xl mx-auto font-medium">
-                          Agent: "{aiResponseText}"
-                        </p>
-                      )}
-                    </motion.div>
-                  ) : (
-                    <motion.p
-                      key="waiting"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="text-gray-500 text-lg"
-                    >
-                      {isConnected ? "Listening to chat..." : "Agent resting. Connect a token to start."}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+      {/* Main: full viewport, edge-to-edge; stacks on small screens */}
+      <main className="flex-1 relative z-10 flex flex-col lg:flex-row min-h-0 w-full">
+        {/* Visualizer zone - takes most space, no max-width */}
+        <div className="flex-1 min-w-0 flex flex-col relative overflow-hidden border-r border-white/5">
+          <div className="absolute inset-0 bg-gradient-to-br from-cyan-950/20 via-black/40 to-fuchsia-950/10" />
+          <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-cyan-500/20 to-transparent pointer-events-none" aria-hidden />
+          {/* Overlay bar: token name and ticker only (Pending % and MC moved to visualizer center) */}
+          <div className="relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 py-3 flex-wrap">
+            <input
+              type="text"
+              placeholder="Token name"
+              value={streamName}
+              onChange={e => setStreamName(e.target.value)}
+              className="bg-transparent text-lg sm:text-xl font-bold text-white placeholder:text-gray-500 border-b border-transparent hover:border-white/20 focus:border-cyan-500/60 focus:outline-none transition-colors w-32 sm:w-44"
+            />
+            <span className="text-sm px-2 py-1 bg-white/10 text-gray-300 rounded font-mono">
+              $ <input
+                type="text"
+                placeholder="TICKER"
+                value={streamSymbol}
+                onChange={e => setStreamSymbol(e.target.value.toUpperCase())}
+                className="bg-transparent w-16 sm:w-20 focus:outline-none placeholder:text-gray-500 font-mono"
+              />
+            </span>
           </div>
 
-          {/* Incoming Stream - Smaller / Side View */}
-          <div className="lg:w-[30%] bg-black/40 border border-white/10 rounded-3xl flex flex-col backdrop-blur-md overflow-hidden shadow-xl">
-            <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-2 text-gray-300">
-                <MessageSquare className="w-4 h-4 text-red-400" />
-                Live Chat
-              </h3>
-              <div className="bg-white/10 px-2 py-0.5 text-[10px] rounded-full text-red-300 font-mono">
-                {messages.length} msgs
-              </div>
+          {/* Visualizer + status - centered, fills space */}
+          <div className="flex-1 flex flex-col items-center justify-center relative z-10 px-4 py-6 min-h-0">
+            <BondingCurveVisualizer
+              bondingCurveData={bondingCurveData}
+              isPlayingTTS={isPlayingTTS}
+              audioAnalyzerRef={audioAnalyzerRef}
+            />
+            <div className="h-20 flex flex-col items-center justify-center mt-2">
+              <AnimatePresence mode="wait">
+                {isPlayingTTS && activeMessageId ? (
+                  <motion.div
+                    key="speaking"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="text-center"
+                  >
+                    <p className="text-lg sm:text-xl font-medium flex items-center gap-2 justify-center bg-gradient-to-r from-white via-cyan-100 to-fuchsia-200 bg-clip-text text-transparent">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping flex-shrink-0" />
+                      {aiResponseText ? "Speaking…" : "Generating…"}
+                    </p>
+                    <p className="text-gray-400 text-sm max-w-md mx-auto mt-1 italic line-clamp-2">
+                      "{messages.find(m => m.id === activeMessageId)?.message || "..."}"
+                    </p>
+                    {aiResponseText && (
+                      <p className="text-cyan-200/90 text-sm sm:text-base max-w-md mx-auto mt-2 font-medium">
+                        "{aiResponseText}"
+                      </p>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.p
+                    key="waiting"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-gray-500 text-base sm:text-lg animate-pulse"
+                  >
+                    {isConnected ? "Listening to chat…" : "Connect a token to start"}
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
+          </div>
+        </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 font-mono scrollbar-thin">
+        {/* Chat panel - fixed width, full height, glass + gradient accent */}
+        <div className="w-full sm:w-[320px] lg:w-[380px] flex-shrink-0 flex flex-col bg-black/20 backdrop-blur-xl overflow-hidden relative">
+          <div className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-cyan-500/30 via-fuchsia-500/20 to-cyan-500/20 pointer-events-none" aria-hidden />
+          <div className="p-3 sm:p-4 border-b border-white/5 flex items-center justify-between flex-shrink-0">
+            <h2 className="text-sm font-bold flex items-center gap-2 text-white">
+              <MessageSquare className="w-4 h-4 text-cyan-400" />
+              Live Chat
+            </h2>
+            <span className="text-[10px] font-mono text-cyan-300/80 bg-white/5 px-2 py-0.5 rounded-full">
+              {messages.length}
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
               {!isConnected && messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 text-xs text-center p-6">
                   <Radio className="w-8 h-8 opacity-20" />
@@ -654,9 +1005,9 @@ export default function PumpfunChatPage() {
               ) : messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-600 gap-3 text-xs">
                   <div className="flex gap-1 items-center opacity-50">
-                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse delay-75" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse delay-150" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse delay-75" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse delay-150" />
                   </div>
                   <p>Listening...</p>
                 </div>
@@ -674,11 +1025,11 @@ export default function PumpfunChatPage() {
                           animate={{ opacity: 1, x: 0, scale: 1 }}
                           className={`pb-1 px-3 rounded-lg flex items-start gap-2 transition-all group ${
                             isActive 
-                              ? 'bg-red-900/40 border border-red-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] z-10 scale-[1.02]' 
+                              ? 'bg-cyan-900/40 border border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.35)] z-10 scale-[1.02]' 
                               : 'hover:bg-white/5 opacity-90 hover:opacity-100'
                           }`}
                         >
-                        <div className="w-6 h-6 rounded-full bg-red-900/50 flex-shrink-0 flex items-center justify-center text-red-300 text-xs font-bold overflow-hidden mt-0.5 sm:mt-0">
+                        <div className="w-6 h-6 rounded-full bg-cyan-900/50 flex-shrink-0 flex items-center justify-center text-cyan-300 text-xs font-bold overflow-hidden mt-0.5 sm:mt-0">
                           {msg.profile_image ? (
                             <img src={msg.profile_image} alt="" className="w-full h-full object-cover" />
                           ) : (
@@ -700,12 +1051,12 @@ export default function PumpfunChatPage() {
                           messageStatuses[msg.id] && messageStatuses[msg.id] !== 'history' ? (
                             <div className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider flex items-center gap-1 ${
                               messageStatuses[msg.id] === 'processing' 
-                                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
                                 : 'bg-green-500/20 text-green-400 border border-green-500/30'
                             }`}>
                               {messageStatuses[msg.id] === 'processing' ? (
                                 <>
-                                  <div className="w-1.5 h-1.5 border border-orange-400/50 border-t-orange-400 rounded-full animate-spin" />
+                                  <div className="w-1.5 h-1.5 border border-cyan-400/50 border-t-cyan-400 rounded-full animate-spin" />
                                   WAIT
                                 </>
                               ) : (
@@ -716,7 +1067,7 @@ export default function PumpfunChatPage() {
                             <button 
                               onClick={() => triggerAgent(msg)}
                               disabled={isPlayingTTS}
-                              className="shrink-0 p-1.5 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-transparent hover:border-red-500/30 transition-all disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-gray-400 disabled:hover:border-transparent"
+                              className="shrink-0 p-1.5 rounded-full bg-white/5 hover:bg-cyan-500/20 text-gray-400 hover:text-cyan-400 border border-transparent hover:border-cyan-500/30 transition-all disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-gray-400 disabled:hover:border-transparent"
                               title="Agent Reply"
                             >
                               <Mic className="w-3 h-3" />
@@ -729,16 +1080,16 @@ export default function PumpfunChatPage() {
                         <motion.div
                           initial={{ opacity: 0, y: -5 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="ml-8 mb-3 mt-1 py-1.5 px-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2 backdrop-blur-sm self-start"
+                          className="ml-8 mb-3 mt-1 py-1.5 px-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-start gap-2 backdrop-blur-sm self-start"
                         >
-                          <div className="w-6 h-6 rounded-full bg-black/50 flex-shrink-0 overflow-hidden border border-red-500/30 mt-0.5 flex items-center justify-center">
-                            <img src="/clawk.png" alt="Moltspaces" className="w-full h-full object-cover rounded-full" />
+                          <div className="w-6 h-6 rounded-full bg-black/50 flex-shrink-0 overflow-hidden border border-cyan-500/30 mt-0.5 flex items-center justify-center">
+                            <img src="/clawk.png" alt="EVE" className="w-full h-full object-cover rounded-full" />
                           </div>
                           <div className="flex flex-col flex-1">
-                            <span className="font-bold text-[13px] text-red-500 leading-none mb-1">
-                              {streamName || "Claw Talk"}
+                            <span className="font-bold text-[13px] text-cyan-400 leading-none mb-1">
+                              {streamName || "Eve"}
                             </span>
-                            <span className="text-[13px] text-red-100 font-medium leading-snug">
+                            <span className="text-[13px] text-cyan-100 font-medium leading-snug">
                               {replyText}
                             </span>
                           </div>
@@ -752,7 +1103,6 @@ export default function PumpfunChatPage() {
               <div ref={messagesEndRef} />
             </div>
           </div>
-        </div>
       </main>
     </div>
   );
