@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API keys missing on server. Check .env' }, { status: 500 });
     }
 
-    const { message, username, bondingCurveData, priceChanges, streamName, isBondedToken, solUsdPrice } = await req.json();
+    const { message, username, bondingCurveData, priceChanges, historicalPriceData, streamName, isBondedToken, solUsdPrice } = await req.json();
 
     const agentName = streamName?.trim() || "Eve";
 
@@ -38,7 +38,6 @@ export async function POST(req: NextRequest) {
        let taContext = "";
        let currentMcSolForTa = bondingCurveData?.marketCapSol;
 
-       // If marketCapSol isn't directly on bondingCurveData but we have priceHistory (which we should via page.tsx)
        if (!currentMcSolForTa && priceChanges?.currentMcSol) {
            currentMcSolForTa = priceChanges.currentMcSol;
        }
@@ -46,11 +45,12 @@ export async function POST(req: NextRequest) {
        if (currentMcSolForTa && solUsdPrice) {
          const currentUsdMc = currentMcSolForTa * solUsdPrice;
          const targetUsdMc = currentUsdMc * 1.5; // optimistic 50% target for next leg
-         taContext = `\nTECHNICAL ANALYSIS: The token is looking extremely bullish! We just broke out. The next major resistance is around the $${targetUsdMc.toLocaleString('en-US', {maximumFractionDigits:0})} market cap level! Tell the chat to share the chart and push it to this next leg up!`;
+         
+         taContext = `\nThe token currently has a market cap of $${currentUsdMc.toLocaleString('en-US', {maximumFractionDigits:0})}. Keep the chat hyped!! We are looking for a breakout. The next major resistance to smash through is the $${targetUsdMc.toLocaleString('en-US', {maximumFractionDigits:0})} market cap level!`;
        }
        
        bondingCurveContext = `\n\nCURRENT TOKEN INFO:${mcContext}${chartContext}${taContext}
-The token has ALREADY GRADUATED from pump fun and successfully bonded on Raydium! DO NOT mention reaching 85 sol, bonding, or graduating anymore. Emphasize the bullish technical analysis and continuing to pump the market cap to the given targets.`;
+The token has ALREADY GRADUATED from pump fun and successfully bonded on Raydium! DO NOT mention reaching 85 sol, bonding, or graduating anymore. Emphasize continuing to pump the market cap to the given targets.`;
     } else if (bondingCurveData) {
        const vSol = BigInt(bondingCurveData.virtualSolReserves || 0);
        const supply = BigInt(bondingCurveData.tokenTotalSupply || 0);
@@ -78,6 +78,14 @@ The token has ALREADY GRADUATED from pump fun and successfully bonded on Raydium
 Use this information to understand the current progress, market cap, and how much sol is needed for the token to bond and graduate. No need to mention the amount required to graduate in SOL terms - only in terms of the percetage left to graduate, or the percentage already achieved.`;
     }
 
+    let moralisDataContext = "";
+    if (historicalPriceData && Array.isArray(historicalPriceData) && historicalPriceData.length > 0) {
+      const recentData = historicalPriceData.slice(0, 5).map((d: any) => 
+        `O:${Number(d.open).toPrecision(4)} H:${Number(d.high).toPrecision(4)} L:${Number(d.low).toPrecision(4)} C:${Number(d.close).toPrecision(4)} V:${Number(d.volume).toPrecision(4)}`
+      ).join(" | ");
+      moralisDataContext = `\n\nHISTORICAL PRICE DATA (Moralis):\n- Recent Candlesticks (Latest First): ${recentData}\nAnalyze this data independently. Observe the trends between the open, high, low, close and volume across these periods. Provide a grounded technical analysis of the momentum and where the price might be heading based on this data.`;
+    }
+
     // 1. Generate text response with OpenAI
     const bondingInstructions = isBondedToken 
       ? `It is also launching a token called ${agentName}. The token has successfully bonded! Cheer on the community for their achievement and encourage them to keep sending it higher.`
@@ -93,9 +101,9 @@ It generally has a bullish take on it's future, but does not specifically offer 
 
 ${bondingInstructions}
  
-The message in live chat is: "${message}"${bondingCurveContext}
+The message in live chat is: "${message}"${bondingCurveContext}${moralisDataContext}
 
-Write a short, punchy, conversational response (1-2 sentences max). Be witty, confident, and sound natural when spoken aloud. Don't use emojis or markdown since this will be converted to speech. Always write "sol" instead of the capitalized "SOL" or "Solana" so the text-to-speech engine pronounces it as a single phonetic word.`;
+Write a short, punchy, conversational response (1-3 sentences max). Be witty, confident, and sound natural when spoken aloud. Use the provided historical price data to formulate a grounded technical analysis and incorporate it naturally into your response. Don't use emojis or markdown since this will be converted to speech. Always write "sol" instead of the capitalized "SOL" or "Solana" so the text-to-speech engine pronounces it as a single phonetic word.`;
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'system', content: prompt }],

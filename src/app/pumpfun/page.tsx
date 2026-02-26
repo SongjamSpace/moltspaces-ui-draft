@@ -17,6 +17,7 @@ import {
 
 import { Connection, PublicKey } from "@solana/web3.js";
 import { OnlinePumpSdk } from "@pump-fun/pump-sdk";
+import { AreaChart, Area, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
 // Helper to serialize the bonding curve data for the AI context since it contains BigInt/BNs and PublicKeys
 function serializeBondingCurve(bc: any): any {
@@ -93,6 +94,7 @@ function BondingCurveVisualizer({
   solUsdPrice,
   isPlayingTTS,
   audioAnalyzerRef,
+  priceHistory,
 }: {
   bondingCurveData: any;
   isBondedToken: boolean;
@@ -100,6 +102,7 @@ function BondingCurveVisualizer({
   solUsdPrice: number | null;
   isPlayingTTS: boolean;
   audioAnalyzerRef: React.MutableRefObject<{ analyser: AnalyserNode; data: Uint8Array } | null>;
+  priceHistory: { timestamp: number; mcSol: number }[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevBarLevelsRef = useRef<Float32Array | null>(null);
@@ -437,6 +440,7 @@ export default function PumpfunChatPage() {
   const [isBondedToken, setIsBondedToken] = useState<boolean>(false);
   const [solUsdPrice, setSolUsdPrice] = useState<number | null>(null);
   const [priceHistory, setPriceHistory] = useState<{ timestamp: number; mcSol: number }[]>([]);
+  const [historicalPriceData, setHistoricalPriceData] = useState<any>(null);
   
   // Stream Info State (Manual Entry)
   const [streamName, setStreamName] = useState("");
@@ -481,10 +485,10 @@ export default function PumpfunChatPage() {
   // Auto-fetch removed as pump.fun API is unavailable via proxy/CORS.
 
   // --- LOCAL AI ENGINE LOGIC ---
-  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice });
+  const stateRefs = useRef({ messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice, historicalPriceData });
   useEffect(() => {
-    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice };
-  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice]);
+    stateRefs.current = { messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice, historicalPriceData };
+  }, [messages, messageStatuses, isPlayingTTS, bondingCurveData, priceHistory, streamName, isBondedToken, solUsdPrice, historicalPriceData]);
 
   // Fetch Sol USD Price
   useEffect(() => {
@@ -507,6 +511,36 @@ export default function PumpfunChatPage() {
     const interval = setInterval(fetchSolPrice, 60000); // 1 minute
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch recent price history from Moralis API for bonded tokens
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMoralisHistory = async () => {
+      if (!isBondedToken || !currentTokenAddress || currentTokenAddress === "unknown") return;
+      try {
+        const url = `/api/agent/moralis?tokenAddress=${currentTokenAddress}`; 
+        // Note: I will create the proxy endpoint /api/agent/moralis because Moralis blocks direct client-side requests due to CORS
+        const response = await fetch(url);
+        if (response.ok) {
+           const result = await response.json();
+           if (isMounted) setHistoricalPriceData(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch historical Moralis data:", err);
+      }
+    };
+    
+    // Only fetch once when it's marked as bonded or loaded initially
+    if (isBondedToken) {
+      fetchMoralisHistory();
+      // Optional: Update history every 3 minutes
+      const interval = setInterval(fetchMoralisHistory, 3 * 60 * 1000);
+      return () => {
+        isMounted = false;
+        clearInterval(interval);
+      }
+    }
+  }, [isBondedToken, currentTokenAddress]);
 
   // Fetch bonding curve info periodically directly from the client
   useEffect(() => {
@@ -641,6 +675,7 @@ export default function PumpfunChatPage() {
           username: msgToProcess.username,
           bondingCurveData: stateRefs.current.bondingCurveData,
           priceChanges: { change1m, change5m, currentMcSol: history.length > 0 ? history[history.length - 1].mcSol : null },
+          historicalPriceData: stateRefs.current.historicalPriceData,
           streamName: stateRefs.current.streamName,
           isBondedToken: stateRefs.current.isBondedToken,
           solUsdPrice: stateRefs.current.solUsdPrice
@@ -899,6 +934,7 @@ export default function PumpfunChatPage() {
     setStreamSymbol("");
     setIsBondedToken(false);
     setPriceHistory([]);
+    setHistoricalPriceData(null);
     // messageStatuses and aiReplies intentionally kept to persist data
   };
 
@@ -1019,13 +1055,46 @@ export default function PumpfunChatPage() {
 
           {/* Visualizer + status - centered, fills space */}
           <div className="flex-1 flex flex-col items-center justify-center relative z-10 px-4 py-6 min-h-0">
-            <BondingCurveVisualizer
+            {/* Mini price chart in top-right of center area */}
+          {priceHistory.length > 1 && (
+            <div className="absolute top-3 right-3 w-36 h-16 z-20 pointer-events-none">
+              <p className="text-[9px] font-mono text-gray-500 uppercase tracking-widest mb-0.5 text-right">MC (SOL)</p>
+              <ResponsiveContainer width="100%" height="80%">
+                <AreaChart data={priceHistory} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#00f5ff" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#00f5ff" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <YAxis domain={['auto', 'auto']} hide />
+                  <Tooltip
+                    contentStyle={{ background: 'rgba(0,0,0,0.7)', border: '1px solid #00f5ff33', borderRadius: 4, fontSize: 10, padding: '2px 6px' }}
+                    itemStyle={{ color: '#00f5ff' }}
+                    formatter={(v: any) => [`${Number(v).toFixed(3)} SOL`, '']}
+                    labelFormatter={() => ''}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="mcSol"
+                    stroke="#00f5ff"
+                    strokeWidth={1.5}
+                    fill="url(#mcGrad)"
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <BondingCurveVisualizer
               bondingCurveData={bondingCurveData}
               isBondedToken={isBondedToken}
               currentMcSol={priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].mcSol : null}
               solUsdPrice={solUsdPrice}
               isPlayingTTS={isPlayingTTS}
               audioAnalyzerRef={audioAnalyzerRef}
+              priceHistory={priceHistory}
             />
             <div className="h-20 flex flex-col items-center justify-center mt-2">
               <AnimatePresence mode="wait">
