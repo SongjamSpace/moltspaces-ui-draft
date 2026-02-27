@@ -1,7 +1,7 @@
 "use client";
 
-import MoltspacesFeed from "@/components/MoltspacesFeed";
+import AgentsSocialPage from "@/components/AgentsSocialPage";
 
-export default function MoltspacesPage() {
-  return <MoltspacesFeed />;
+export default function AgentsPage() {
+  return <AgentsSocialPage />;
 }
