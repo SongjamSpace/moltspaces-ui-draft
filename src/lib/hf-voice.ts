@@ -9,12 +9,14 @@ const HF_BASE = "https://adamsongjam-ultimate-rvc.hf.space";
  * @param text The text to be converted to speech.
  * @param voiceModel The RVC voice model ID (e.g., "mr_krabs").
  * @param ttsVoice The base edge-tts voice (default: "en-US-ChristopherNeural").
+ * @param onStatus Optional callback to receive status updates (queue pos, eta).
  * @returns A promise that resolves to the generated audio URL.
  */
 export async function generateHuggingFaceTts(
   text: string,
   voiceModel: string,
   ttsVoice: string = "en-US-ChristopherNeural",
+  onStatus?: (status: { stage: string; position?: number; eta?: number }) => void
 ) {
   // 1. Connect to the Hugging Face Space
   const client = await Client.connect(HF_SPACE);
@@ -65,11 +67,13 @@ export async function generateHuggingFaceTts(
 
       if (statusEvent.stage === "pending") {
         console.log(`Queued at position: ${statusEvent.position}`);
+        onStatus?.({ stage: "pending", position: statusEvent.position });
       } else if (
         statusEvent.stage === "generating" ||
         statusEvent.original_msg === "process_starts"
       ) {
         console.log(`Processing... ETA: ${statusEvent.eta}s`);
+        onStatus?.({ stage: "generating", eta: statusEvent.eta });
       }
     } else if (event.type === "data") {
       // 5. Final audio data received

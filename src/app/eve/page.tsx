@@ -441,6 +441,7 @@ export default function PumpfunChatPage() {
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [aiResponseText, setAiResponseText] = useState<string | null>(null);
+  const [hfStatus, setHfStatus] = useState<{stage: string, position?: number, eta?: number} | null>(null);
   const [bondingCurveData, setBondingCurveData] = useState<any>(null);
   const [isBondedToken, setIsBondedToken] = useState<boolean>(false);
   const [solUsdPrice, setSolUsdPrice] = useState<number | null>(null);
@@ -702,6 +703,7 @@ export default function PumpfunChatPage() {
     setActiveMessageId(msgToProcess.id);
     setIsPlayingTTS(true);
     setAiResponseText(null);
+    setHfStatus(null);
 
     try {
       setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'processing' }));
@@ -757,9 +759,18 @@ export default function PumpfunChatPage() {
       let audioUrl = data.audio;
       if (useHF && data.text) {
          try {
-           audioUrl = await generateHuggingFaceTts(data.text, selectedVoice);
+           audioUrl = await generateHuggingFaceTts(
+             data.text,
+             selectedVoice,
+             "en-US-ChristopherNeural",
+             (status) => {
+               setHfStatus(status);
+             }
+           );
          } catch (err) {
            console.error("HF TTS Error", err);
+         } finally {
+            setHfStatus(null);
          }
       }
 
@@ -795,6 +806,7 @@ export default function PumpfunChatPage() {
             setIsPlayingTTS(false);
             setActiveMessageId(null);
             setAiResponseText(null);
+            setHfStatus(null);
           };
           setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
         } catch (err) {
@@ -805,6 +817,7 @@ export default function PumpfunChatPage() {
             setIsPlayingTTS(false);
             setActiveMessageId(null);
             setAiResponseText(null);
+            setHfStatus(null);
           };
           await audio.play();
           setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
@@ -815,6 +828,7 @@ export default function PumpfunChatPage() {
           setIsPlayingTTS(false);
           setActiveMessageId(null);
           setAiResponseText(null);
+          setHfStatus(null);
         }, 6000);
         setMessageStatuses(prev => ({ ...prev, [msgToProcess.id]: 'answered' }));
       }
@@ -828,6 +842,7 @@ export default function PumpfunChatPage() {
          setIsPlayingTTS(false);
          setActiveMessageId(null);
          setAiResponseText(null);
+         setHfStatus(null);
       }, 3000);
     }
   };
@@ -1210,6 +1225,17 @@ export default function PumpfunChatPage() {
                       <p className="text-cyan-200/90 text-sm sm:text-base max-w-md mx-auto mt-2 font-medium">
                         "{aiResponseText}"
                       </p>
+                    )}
+                    {hfStatus && (
+                      <div className="flex items-center justify-center gap-2 mt-3 text-xs font-mono bg-fuchsia-900/30 text-fuchsia-200 border border-fuchsia-500/20 py-1.5 px-3 rounded-full mx-auto w-max max-w-full">
+                         <Loader2 className="w-3 h-3 animate-spin text-fuchsia-400" />
+                         {hfStatus.stage === "pending" && (
+                           <span>Queued in HF Space... {hfStatus.position ? `Pos: ${hfStatus.position}` : ''}</span>
+                         )}
+                         {hfStatus.stage === "generating" && (
+                           <span>Generating Voice... {hfStatus.eta ? `ETA: ${hfStatus.eta}s` : ''}</span>
+                         )}
+                      </div>
                     )}
                   </motion.div>
                 ) : (
