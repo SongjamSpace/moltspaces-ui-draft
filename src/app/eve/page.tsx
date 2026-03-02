@@ -153,7 +153,7 @@ function BondingCurveVisualizer({
       const barAudioLevels = new Float32Array(NUM_BARS);
       const AUDIO_GAIN = 2.2;
       if (analyzer) {
-        analyzer.analyser.getByteFrequencyData(analyzer.data);
+        analyzer.analyser.getByteFrequencyData(analyzer.data as any);
         const freq = analyzer.data;
         let sum = 0;
         for (let j = 0; j < freq.length; j++) sum += freq[j];
@@ -781,7 +781,7 @@ export default function PumpfunChatPage() {
           if (!audioContextRef.current) audioContextRef.current = ctx;
           if (ctx.state === "suspended") await ctx.resume();
 
-          const res = await fetch(data.audio);
+          const res = await fetch(audioUrl);
           const arrayBuffer = await res.arrayBuffer();
           const buffer = await ctx.decodeAudioData(arrayBuffer);
 
@@ -812,7 +812,7 @@ export default function PumpfunChatPage() {
         } catch (err) {
           console.warn("Web Audio playback failed, falling back to HTML Audio", err);
           audioAnalyzerRef.current = null;
-          const audio = new Audio(data.audio);
+          const audio = new Audio(audioUrl);
           audio.onended = () => {
             setIsPlayingTTS(false);
             setActiveMessageId(null);
@@ -1065,6 +1065,31 @@ export default function PumpfunChatPage() {
               title="Add Voice Model"
             >
               <Plus className="w-4 h-4" />
+            </button>
+            <button
+              onClick={async () => {
+                 if (selectedVoice === "elevenlabs_default") {
+                   alert("Please select an HF voice model to test");
+                   return;
+                 }
+                 try {
+                   const audioUrl = await generateHuggingFaceTts(
+                     "Hello! This is a simple test of the Hugging Face text to speech request.",
+                     selectedVoice,
+                     "en-US-ChristopherNeural"
+                   );
+                   if (audioUrl) {
+                      const audio = new Audio(audioUrl);
+                      audio.play();
+                   }
+                 } catch (err) {
+                    alert("Test TTS failed: " + err);
+                 }
+              }}
+              className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-fuchsia-400 transition"
+              title="Test TTS"
+            >
+              <Volume2 className="w-4 h-4" />
             </button>
           </div>
           <div className="relative hidden sm:block w-48 lg:w-64">
