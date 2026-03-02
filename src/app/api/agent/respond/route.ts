@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API keys missing on server. Check .env' }, { status: 500 });
     }
 
-    const { message, username, bondingCurveData, priceChanges, historicalPriceData, streamName, isBondedToken, solUsdPrice } = await req.json();
+    const { message, username, bondingCurveData, priceChanges, historicalPriceData, streamName, isBondedToken, solUsdPrice, skipTTS } = await req.json();
 
     const agentName = streamName?.trim() || "Eve";
 
@@ -115,6 +115,12 @@ Write a short, punchy, conversational response (1-3 sentences max). Be witty, co
 
     if (!aiText) {
       throw new Error('Failed to generate response from OpenAI');
+    }
+
+    if (skipTTS) {
+      return NextResponse.json({
+        text: aiText,
+      });
     }
 
     if (!ELEVENLABS_API_KEY) {

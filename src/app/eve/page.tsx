@@ -13,7 +13,12 @@ import {
   Volume2,
   Mic,
   Settings,
+  Plus,
+  X,
+  Loader2
 } from "lucide-react";
+
+import { generateHuggingFaceTts, downloadAndProcessVoiceModel, testHFSpace } from '@/lib/hf-voice';
 
 import { Connection, PublicKey } from "@solana/web3.js";
 import { OnlinePumpSdk } from "@pump-fun/pump-sdk";
@@ -446,6 +451,34 @@ export default function PumpfunChatPage() {
   const [streamName, setStreamName] = useState("");
   const [streamSymbol, setStreamSymbol] = useState("");
   
+  // Voice Models State
+  const [customVoices, setCustomVoices] = useState<{name: string, id: string}[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<string>("elevenlabs_default");
+  const [isLoadingVoices, setIsLoadingVoices] = useState<boolean>(true);
+  
+  const [showAddVoice, setShowAddVoice] = useState(false);
+  const [newVoiceName, setNewVoiceName] = useState("");
+  const [newVoiceUrl, setNewVoiceUrl] = useState("");
+  const [isAddingVoice, setIsAddingVoice] = useState(false);
+
+  const handleAddVoice = async () => {
+    if (!newVoiceName || !newVoiceUrl) return;
+    setIsAddingVoice(true);
+    try {
+      await downloadAndProcessVoiceModel(newVoiceUrl, newVoiceName);
+      setCustomVoices(prev => [...prev, { name: newVoiceName, id: newVoiceName }]);
+      setSelectedVoice(newVoiceName);
+      setShowAddVoice(false);
+      setNewVoiceName("");
+      setNewVoiceUrl("");
+    } catch (err) {
+      console.error("Failed to add voice model", err);
+      alert("Failed to add voice model: " + (err as Error).message);
+    } finally {
+      setIsAddingVoice(false);
+    }
+  };
+
   // Message Status State
   const [messageStatuses, setMessageStatuses] = useState<Record<string, 'processing' | 'answered' | 'history'>>({});
   const [aiReplies, setAiReplies] = useState<Record<string, string>>({});
@@ -461,6 +494,34 @@ export default function PumpfunChatPage() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  // Auto-fetch HF Voice Models on load
+  useEffect(() => {
+    let isMounted = true;
+    const fetchHFModels = async () => {
+      try {
+        const res: any = await testHFSpace();
+        if (isMounted && res.data && Array.isArray(res.data) && Array.isArray(res.data[0]?.choices)) {
+          const choices = res.data[0].choices;
+          const fetchedVoices = choices.map((choice: [string, string]) => ({ name: choice[0], id: choice[1] }));
+          
+          setCustomVoices(prev => {
+            const existingIds = new Set(prev.map(v => v.id));
+            const newVoices = fetchedVoices.filter((v: any) => !existingIds.has(v.id));
+            return [...prev, ...newVoices];
+          });
+          console.log(`Auto-loaded ${fetchedVoices.length} models from HF Space`);
+        }
+      } catch (e: any) {
+        console.error("Failed to auto-load HF models:", e);
+      } finally {
+        if (isMounted) setIsLoadingVoices(false);
+      }
+    };
+    
+    fetchHFModels();
+    return () => { isMounted = false; };
+  }, []);
+
   // Assume generic parsed room ID for DB
   const currentTokenAddress = React.useMemo(() => {
     let roomId = addressInput.trim();
@@ -667,6 +728,8 @@ export default function PumpfunChatPage() {
         }
       }
 
+      const useHF = selectedVoice !== "elevenlabs_default";
+
       const res = await fetch('/api/agent/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -678,7 +741,8 @@ export default function PumpfunChatPage() {
           historicalPriceData: stateRefs.current.historicalPriceData,
           streamName: stateRefs.current.streamName,
           isBondedToken: stateRefs.current.isBondedToken,
-          solUsdPrice: stateRefs.current.solUsdPrice
+          solUsdPrice: stateRefs.current.solUsdPrice,
+          skipTTS: useHF
         }),
       });
 
@@ -690,7 +754,16 @@ export default function PumpfunChatPage() {
       setAiResponseText(data.text);
       setAiReplies(prev => ({ ...prev, [msgToProcess.id]: data.text }));
       
-      if (data.audio) {
+      let audioUrl = data.audio;
+      if (useHF && data.text) {
+         try {
+           audioUrl = await generateHuggingFaceTts(data.text, selectedVoice);
+         } catch (err) {
+           console.error("HF TTS Error", err);
+         }
+      }
+
+      if (audioUrl) {
         // Play through Web Audio API so visualizer can read real-time frequency data
         try {
           const ctx = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -959,6 +1032,26 @@ export default function PumpfunChatPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <div className="hidden sm:flex items-center gap-2">
+            <select
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-2 text-sm text-cyan-100 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 appearance-none cursor-pointer"
+            >
+              <option value="elevenlabs_default" className="bg-gray-900">Eve (ElevenLabs)</option>
+              {customVoices.map(v => (
+                <option key={v.id} value={v.id} className="bg-gray-900">{v.name} (HF)</option>
+              ))}
+              {isLoadingVoices && <option disabled className="bg-gray-900 text-gray-500">Loading HF Models...</option>}
+            </select>
+            <button
+              onClick={() => setShowAddVoice(true)}
+              className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-cyan-400 transition"
+              title="Add Voice Model"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
           <div className="relative hidden sm:block w-48 lg:w-64">
             <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
             <input
@@ -1255,6 +1348,62 @@ export default function PumpfunChatPage() {
             </div>
           </div>
       </main>
+
+      <AnimatePresence>
+        {showAddVoice && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#0f0f15] border border-white/10 p-5 rounded-2xl w-full max-w-sm shadow-2xl relative"
+            >
+              <button
+                onClick={() => setShowAddVoice(false)}
+                className="absolute top-3 right-3 text-gray-500 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="text-lg font-bold text-white mb-4">Add Voice Model</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Model Name</label>
+                  <input
+                    type="text"
+                    value={newVoiceName}
+                    onChange={e => setNewVoiceName(e.target.value)}
+                    placeholder="e.g. mr_krabs"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500 text-white placeholder-gray-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Model URL</label>
+                  <input
+                    type="text"
+                    value={newVoiceUrl}
+                    onChange={e => setNewVoiceUrl(e.target.value)}
+                    placeholder="https://huggingface.co/..."
+                    className="w-full bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500 text-white placeholder-gray-600"
+                  />
+                </div>
+                <button
+                  onClick={handleAddVoice}
+                  disabled={isAddingVoice || !newVoiceName || !newVoiceUrl}
+                  className="w-full py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:hover:bg-cyan-500 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition"
+                >
+                  {isAddingVoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  {isAddingVoice ? 'Adding Model...' : 'Add Voice Model'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

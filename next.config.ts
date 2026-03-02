@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  async redirects() {
+    return [
+      {
+        source: '/pumpfun',
+        destination: '/eve',
+        permanent: false,
+      },
+    ];
+  },
   serverExternalPackages: [],
   // Disable ESLint during builds to allow deployment
   eslint: {
